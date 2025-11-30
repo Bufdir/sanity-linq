@@ -23,6 +23,7 @@ using Sanity.Linq.BlockContent;
 
 namespace Sanity.Linq;
 #nullable disable
+
 public static class SanityDocumentExtensions
 {
     /// <param name="document"></param>
@@ -34,8 +35,7 @@ public static class SanityDocumentExtensions
         /// <returns></returns>
         public bool IsDraft()
         {
-            if (document == null) return false;
-            var id = document.SanityId();
+            var id = document?.SanityId();
             if (id == null) return false;
             return id.StartsWith("drafts.");
         }
@@ -195,79 +195,80 @@ public static class SanityDocumentExtensions
         }
     }
 
+    private static readonly ConcurrentDictionary<Type, PropertyInfo> CreatedAtPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo> IdPropertyCache = new();
 
-    private static ConcurrentDictionary<Type, PropertyInfo> _idPropertyCache = new();
-    private static PropertyInfo GetIdProperty(this Type type)
+    private static readonly ConcurrentDictionary<Type, PropertyInfo> RevPropertyCache = new();
+
+    private static readonly ConcurrentDictionary<Type, PropertyInfo> TypePropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo> UpdatedAtPropertyCache = new();
+
+    extension(Type type)
     {
-        if (!_idPropertyCache.ContainsKey(type))
+        private PropertyInfo GetCreatedAtProperty()
         {
-            var props = type.GetProperties();
-            var idProperty = props.FirstOrDefault(p => p.Name.Equals("_id", StringComparison.InvariantCultureIgnoreCase) ||
-                                                       (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_id"));
-            _idPropertyCache[type] = idProperty;
+            if (!CreatedAtPropertyCache.ContainsKey(type))
+            {
+                var props = type.GetProperties();
+                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_createdAt", StringComparison.InvariantCultureIgnoreCase) ||
+                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_createdAt"));
+
+                CreatedAtPropertyCache[type] = revProperty;
+            }
+            return CreatedAtPropertyCache[type];
         }
-        return _idPropertyCache[type];
-    }
 
-
-    private static ConcurrentDictionary<Type, PropertyInfo> _typePropertyCache = new();
-    private static PropertyInfo GetTypeProperty(this Type type)
-    {
-        if (!_typePropertyCache.ContainsKey(type))
+        private PropertyInfo GetIdProperty()
         {
-            var props = type.GetProperties();
-            var typeProperty = props.FirstOrDefault(p => p.Name.Equals("_type", StringComparison.InvariantCultureIgnoreCase) ||
-                                                         (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_type"));
-
-            _typePropertyCache[type] = typeProperty;
+            if (!IdPropertyCache.ContainsKey(type))
+            {
+                var props = type.GetProperties();
+                var idProperty = props.FirstOrDefault(p => p.Name.Equals("_id", StringComparison.InvariantCultureIgnoreCase) ||
+                                                           (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_id"));
+                IdPropertyCache[type] = idProperty;
+            }
+            return IdPropertyCache[type];
         }
-        return _typePropertyCache[type];
-    }
 
-
-    private static ConcurrentDictionary<Type, PropertyInfo> _revPropertyCache = new();
-    private static PropertyInfo GetRevisionProperty(this Type type)
-    {
-        if (!_revPropertyCache.ContainsKey(type))
+        private PropertyInfo GetRevisionProperty()
         {
-            var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p => p.Name.Equals("_rev", StringComparison.InvariantCultureIgnoreCase) ||
-                                                        (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_rev"));
+            if (!RevPropertyCache.ContainsKey(type))
+            {
+                var props = type.GetProperties();
+                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_rev", StringComparison.InvariantCultureIgnoreCase) ||
+                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_rev"));
 
-            _revPropertyCache[type] = revProperty;
+                RevPropertyCache[type] = revProperty;
+            }
+            return RevPropertyCache[type];
         }
-        return _revPropertyCache[type];
-    }
 
-
-    private static ConcurrentDictionary<Type, PropertyInfo> _createdAtPropertyCache = new();
-    private static PropertyInfo GetCreatedAtProperty(this Type type)
-    {
-        if (!_createdAtPropertyCache.ContainsKey(type))
+        private PropertyInfo GetTypeProperty()
         {
-            var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p => p.Name.Equals("_createdAt", StringComparison.InvariantCultureIgnoreCase) ||
-                                                        (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_createdAt"));
+            if (!TypePropertyCache.ContainsKey(type))
+            {
+                var props = type.GetProperties();
+                var typeProperty = props.FirstOrDefault(p => p.Name.Equals("_type", StringComparison.InvariantCultureIgnoreCase) ||
+                                                             (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_type"));
 
-            _createdAtPropertyCache[type] = revProperty;
+                TypePropertyCache[type] = typeProperty;
+            }
+            return TypePropertyCache[type];
         }
-        return _createdAtPropertyCache[type];
-    }
 
-    private static ConcurrentDictionary<Type, PropertyInfo> _updatedAtPropertyCache = new();
-    private static PropertyInfo GetUpdatedAtProperty(this Type type)
-    {
-        if (!_updatedAtPropertyCache.ContainsKey(type))
+        private PropertyInfo GetUpdatedAtProperty()
         {
-            var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p => p.Name.Equals("_updatedAt", StringComparison.InvariantCultureIgnoreCase) ||
-                                                        (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_updatedAt"));
+            if (!UpdatedAtPropertyCache.ContainsKey(type))
+            {
+                var props = type.GetProperties();
+                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_updatedAt", StringComparison.InvariantCultureIgnoreCase) ||
+                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_updatedAt"));
 
-            _updatedAtPropertyCache[type] = revProperty;
+                UpdatedAtPropertyCache[type] = revProperty;
+            }
+            return UpdatedAtPropertyCache[type];
         }
-        return _updatedAtPropertyCache[type];
     }
-
 
     extension(object blockContent)
     {

@@ -30,8 +30,7 @@ using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 #nullable disable
-internal class SanityExpressionParser(Expression expression, Type docType, int maxNestingLevel, Type resultType = null)
-    : ExpressionVisitor
+internal class SanityExpressionParser(Expression expression, Type docType, int maxNestingLevel, Type resultType = null) : ExpressionVisitor
 {
     private SanityQueryBuilder QueryBuilder { get; set; } = new();
     public int MaxNestingLevel { get; set; } = maxNestingLevel;
@@ -42,14 +41,15 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     public string BuildQuery(bool includeProjections = true)
     {            
         //Initialize query builder
-        QueryBuilder = new SanityQueryBuilder();
-            
-        // Add contraint for root type
-        QueryBuilder.DocType = DocType;
-        QueryBuilder.ResultType = ResultType ?? DocType;
+        QueryBuilder = new SanityQueryBuilder
+        {
+            // Add constraint for root type
+            DocType = DocType,
+            ResultType = ResultType ?? DocType
+        };
 
         // Parse Query
-        if (Expression is MethodCallExpression || Expression is LambdaExpression)
+        if (Expression is MethodCallExpression or LambdaExpression)
         {
             // Traverse expression to build query
             Visit(Expression);
@@ -65,37 +65,43 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     public override Expression Visit(Expression expression)
     {
-        if (expression == null) return expression;
-        if (expression is LambdaExpression l)
+        switch (expression)
         {
-            //Simplify lambda
-            expression = (LambdaExpression)Evaluator.PartialEval(expression);
-            if (((LambdaExpression)expression).Body is MethodCallExpression method)
+            case null:
+                return null;
+            case LambdaExpression l:
             {
-                QueryBuilder.Constraints.Add(TransformMethodCallExpression(method));
-            }
-        }
-        if (expression is BinaryExpression b)
-        {
-            QueryBuilder.Constraints.Add(TransformBinaryExpression(b));
-            return b;
-        }
-        if (expression is UnaryExpression u)
-        {
-            QueryBuilder.Constraints.Add(TransformUnaryExpression(u));
-            return u;
-        }
-        if (expression is MethodCallExpression m)
-        {
-            TransformMethodCallExpression(m);
-            if (!(m.Arguments[0] is ConstantExpression))
-            {
-                Visit(m.Arguments[0]);
-            }
-            return expression;
+                //Simplify lambda
+                expression = (LambdaExpression)Evaluator.PartialEval(expression);
+                if (((LambdaExpression)expression).Body is MethodCallExpression method)
+                {
+                    QueryBuilder.Constraints.Add(TransformMethodCallExpression(method));
+                }
 
+                break;
+            }
         }
-        return base.Visit(expression);
+
+        switch (expression)
+        {
+            case BinaryExpression b:
+                QueryBuilder.Constraints.Add(TransformBinaryExpression(b));
+                return b;
+            case UnaryExpression u:
+                QueryBuilder.Constraints.Add(TransformUnaryExpression(u));
+                return u;
+            case MethodCallExpression m:
+            {
+                TransformMethodCallExpression(m);
+                if (m.Arguments[0] is not ConstantExpression)
+                {
+                    Visit(m.Arguments[0]);
+                }
+                return expression;
+            }
+            default:
+                return base.Visit(expression);
+        }
     }
 
 
@@ -153,18 +159,13 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         left = TransformOperand(b.Left);
         right = TransformOperand(b.Right);
 
-        // Handle comparison to null
-        if (right == "null" && op == "==")
+        return right switch
         {
-            return $"(!(defined({left})) || {left} {op} {right})";
-        }
-
-        if (right == "null" && op == "!=")
-        {
-            return $"(defined({left}) && {left} {op} {right})";
-        }
-
-        return $"({left} {op} {right})";
+            // Handle comparison to null
+            "null" when op == "==" => $"(!(defined({left})) || {left} {op} {right})",
+            "null" when op == "!=" => $"(defined({left}) && {left} {op} {right})",
+            _ => $"({left} {op} {right})"
+        };
     }
 
     protected string TransformMethodCallExpression(MethodCallExpression e)
@@ -216,12 +217,12 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                         try { enumerableObj = Expression.Lambda(simplified).Compile().DynamicInvoke(); } catch { }
                     }
 
-                    if (enumerableObj is IEnumerable ie1 && !(enumerableObj is string))
+                    if (enumerableObj is IEnumerable ie1 and not string)
                     {
                         // Case: titles.Contains(p.Title)
                         var memberName = TransformOperand(valueExpr);
                         var values = ie1.Cast<object>()?.Where(o => o != null)?.ToArray();
-                        if (values == null || values.Length == 0)
+                        if (values.Length == 0)
                         {
                             return $"{memberName} in []";
                         }

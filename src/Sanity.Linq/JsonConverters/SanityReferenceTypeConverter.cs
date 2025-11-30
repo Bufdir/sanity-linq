@@ -31,33 +31,32 @@ public class SanityReferenceTypeConverter : JsonConverter
 
     public override object? ReadJson(JsonReader reader, Type type, object? existingValue, JsonSerializer serializer)
     {
-        var objectType = type;
-        var elemType = objectType.GetGenericArguments()[0];
-        var obj = serializer.Deserialize(reader) as JObject;
-        if (obj != null)
+        var elemType = type.GetGenericArguments()[0];
+        if (serializer.Deserialize(reader) is not JObject obj)
         {
-            if (obj.GetValue("_ref") != null)
-            {
-                // Normal reference
-                return obj.ToObject(objectType);
-            }
-
-            var res = Activator.CreateInstance(objectType);
-            var refProp = objectType.GetProperty(nameof(SanityReference<object>.Ref));
-            var typeProp = objectType.GetProperty(nameof(SanityReference<object>.SanityType));
-            var keyProp = objectType.GetProperty(nameof(SanityReference<object>.SanityKey));
-            var weakProp = objectType.GetProperty(nameof(SanityReference<object>.Weak));
-            var valueProp = objectType.GetProperty(nameof(SanityReference<object>.Value));
-
-            if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
-            if (typeProp != null) typeProp.SetValue(res, "reference");
-            if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key"));
-            if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak"));
-            if (valueProp != null) valueProp.SetValue(res, serializer.Deserialize(new StringReader(obj.ToString()), elemType));
-            return res;
+            return null;
         }
+
+        if (obj.GetValue("_ref") != null)
+        {
+            // Normal reference
+            return obj.ToObject(type);
+        }
+
+        var res = Activator.CreateInstance(type);
+        var refProp = type.GetProperty(nameof(SanityReference<object>.Ref));
+        var typeProp = type.GetProperty(nameof(SanityReference<object>.SanityType));
+        var keyProp = type.GetProperty(nameof(SanityReference<object>.SanityKey));
+        var weakProp = type.GetProperty(nameof(SanityReference<object>.Weak));
+        var valueProp = type.GetProperty(nameof(SanityReference<object>.Value));
+
+        if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
+        if (typeProp != null) typeProp.SetValue(res, "reference");
+        if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key"));
+        if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak"));
+        if (valueProp != null) valueProp.SetValue(res, serializer.Deserialize(new StringReader(obj.ToString()), elemType));
+        return res;
         // Unable to deserialize
-        return null;
     }
 
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)

@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,23 +14,19 @@
 //  along with this program.
 
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq.CommonTypes
+namespace Sanity.Linq.CommonTypes;
+
+public class SanityImageAsset : SanityAsset
 {
-    public class SanityImageAsset : SanityAsset
+    public SanityImageAsset()
     {
-        public SanityImageAsset() : base()
-        {
-            Type = "sanity.imageAsset";
-        }
+        Type = "sanity.imageAsset";
     }
+}
 
-    public class SanityImageAssetReference : SanityImageAsset
-    {
-        [JsonProperty("_ref")]
-        public string Ref { get; set; }
-    }
+public class SanityImageAssetReference : SanityImageAsset
+{
+    [JsonProperty("_ref")]
+    public string? Ref { get; set; }
 }

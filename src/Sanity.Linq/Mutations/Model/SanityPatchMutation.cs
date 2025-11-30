@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,31 +13,25 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+namespace Sanity.Linq.Mutations.Model;
 
-namespace Sanity.Linq.Mutations
+public class SanityPatchMutation : SanityMutation
 {
-    public class SanityPatchMutation : SanityMutation
+    public SanityPatchMutation()
     {
-        public SanityPatchMutation()
-        {
 
-        }
-
-        public SanityPatchMutation(SanityPatchById patch)
-        {
-            Patch = patch;
-        }
-
-        public SanityPatchMutation(SanityPatchByQuery patch)
-        {
-            Patch = patch;
-        }
-
-        public object Patch { get; set; }
-        
     }
-    
+
+    public SanityPatchMutation(SanityPatchById patch)
+    {
+        Patch = patch;
+    }
+
+    public SanityPatchMutation(SanityPatchByQuery patch)
+    {
+        Patch = patch;
+    }
+
+    public object? Patch { get; set; }
+        
 }

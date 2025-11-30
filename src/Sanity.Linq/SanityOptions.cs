@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -16,34 +16,33 @@
 
 using System;
 
-namespace Sanity.Linq
+namespace Sanity.Linq;
+
+public class SanityOptions
 {
-    public class SanityOptions
-    {
-        public string ProjectId { get; set; }
+    public string ProjectId { get; set; } = string.Empty;
 
-        public string Dataset { get; set; }
+    public string Dataset { get; set; } = string.Empty;
 
-        public string Token { get; set; }
+    public string? Token { get; set; }
 
-        public bool UseCdn { get; set; }
+    public bool UseCdn { get; set; }
 
-        private string _apiVersion = "v1";
+    private string _apiVersion = "v1";
         
-        /// <summary>
-        /// The Sanity API version to use. Defaults to v1. Prefixes with "v" if not present as prefix.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">If you try to set ApiVersion = null</exception>
-        public string ApiVersion
+    /// <summary>
+    /// The Sanity API version to use. Defaults to v1. Prefixes with "v" if not present as prefix.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">If you try to set ApiVersion = null</exception>
+    public string ApiVersion
+    {
+        get => _apiVersion;
+        set
         {
-            get => _apiVersion;
-            set
-            {
-                if (value == null)
-                    throw new ArgumentNullException("ApiVersion cannot be set to null");
+            if (value == null)
+                throw new ArgumentNullException("ApiVersion cannot be set to null");
                 
-                _apiVersion = value.StartsWith("v") ? value : $"v{value}";
-            }
+            _apiVersion = value.StartsWith("v") ? value : $"v{value}";
         }
     }
 }

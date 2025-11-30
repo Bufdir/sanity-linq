@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,28 +14,25 @@
 //  along with this program.
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq.Mutations
+namespace Sanity.Linq.Mutations.Model;
+
+public class SanityDeleteByQueryMutation  : SanityMutation
 {
-    public class SanityDeleteByQueryMutation  : SanityMutation
+    public SanityDeleteByQueryMutation(string query)
     {
-        public SanityDeleteByQueryMutation(string query)
+        if (string.IsNullOrEmpty(query))
         {
-            if (string.IsNullOrEmpty(query))
-            {
-                throw new ArgumentException("Query cannot be null when creating a delete by query mutation.", nameof(query));
-            }
-
-            Delete = new SanityQuery { Query = query };
+            throw new ArgumentException("Query cannot be null when creating a delete by query mutation.", nameof(query));
         }
 
-        public SanityQuery Delete { get; set; }
+        Delete = new SanityQuery { Query = query };
+    }
 
-        public class SanityQuery
-        {
-            public string Query { get; set; }
-        }
+    public SanityQuery Delete { get; set; }
+
+    public class SanityQuery
+    {
+        public string Query { get; set; } = string.Empty;
     }
 }

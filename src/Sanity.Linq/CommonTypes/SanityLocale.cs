@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,73 +13,69 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+#nullable disable
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
-namespace Sanity.Linq.CommonTypes
+namespace Sanity.Linq.CommonTypes;
+
+public class SanityLocale<T> : Dictionary<string, object>
 {
-    public class SanityLocale<T> : Dictionary<string, object>
+    public SanityLocale()
     {
-        public SanityLocale()
-        {
-        }
+    }
 
-        public SanityLocale(string sanityTypeName)
-        {
-            Type = sanityTypeName;
-        }
+    public SanityLocale(string sanityTypeName)
+    {
+        Type = sanityTypeName;
+    }
 
-        [JsonIgnore]
-        public string Type
-        {
-            get => ContainsKey("_type") ? this["_type"]?.ToString() : null;
-            set => this["_type"] = value;
-        }
-        
+    [JsonIgnore]
+    public string Type
+    {
+        get => ContainsKey("_type") ? this["_type"]?.ToString() : null;
+        set => this["_type"] = value;
+    }
 
-        public IReadOnlyDictionary<string, T> Translations => this.Where(kv => kv.Key != "_type").ToDictionary(kv => kv.Key, kv => {
-            if (kv.Value == null) return default(T);
-            if (kv.Value is T) return (T)kv.Value;
-            if (kv.Value is JObject) return ((JObject)kv.Value).ToObject<T>();
-            return default(T);
-        });
+    public IReadOnlyDictionary<string, T> Translations => this.Where(kv => kv.Key != "_type").ToDictionary(kv => kv.Key, kv =>
+    {
+        if (kv.Value == null) return default(T);
+        if (kv.Value is T value) return value;
+        if (kv.Value is JObject jObject) return jObject.ToObject<T>();
+        return default(T);
+    });
 
-        public T Get(string languageCode)
+    public T Get(string languageCode)
+    {
+        if (ContainsKey(languageCode))
         {
-            if (this.ContainsKey(languageCode))
+            if (this[languageCode] is JObject)
             {
-                if (this[languageCode] is JObject)
-                {
-                    return ((JObject)this[languageCode]).ToObject<T>();
-                }
-                else if (this[languageCode] is JArray)
-                {
-                    return ((JArray)this[languageCode]).ToObject<T>();
-                }
-                else
-                {
-                    var sVal = this[languageCode]?.ToString();
-                    if (sVal != null && typeof(T) == typeof(string))
-                    {
-                        return (T)(object)sVal;
-                    }
-                    return sVal != null ? (T)Convert.ChangeType(sVal, typeof(T)) : default(T);
-                }
+                return ((JObject)this[languageCode]).ToObject<T>();
             }
-            else
+
+            if (this[languageCode] is JArray)
             {
-                return default(T);
+                return ((JArray)this[languageCode]).ToObject<T>();
             }
+
+            var sVal = this[languageCode]?.ToString();
+            if (sVal != null && typeof(T) == typeof(string))
+            {
+                return (T)(object)sVal;
+            }
+            return sVal != null ? (T)Convert.ChangeType(sVal, typeof(T)) : default(T);
         }
 
-        public void Set(string languageCode, T value)
-        {
-            this[languageCode] = value;
-        }
+        return default(T);
+    }
 
+    public void Set(string languageCode, T value)
+    {
+        this[languageCode] = value;
     }
 }

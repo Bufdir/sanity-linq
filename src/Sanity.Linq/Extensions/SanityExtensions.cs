@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,42 +13,41 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Sanity.Linq.CommonTypes;
 using System;
+using Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.Extensions
+namespace Sanity.Linq;
+
+public static class SanityExtensions
 {
-    public static class SanityExtensions
+    /// <summary>
+    /// Used to retreived sanity type name from a class name by convention.
+    /// </summary>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    public static string GetSanityTypeName(this Type type)
     {
-        /// <summary>
-        /// Used to retreived sanity type name from a class name by convention.
-        /// </summary>
-        /// <param name="type"></param>
-        /// <returns></returns>
-        public static string GetSanityTypeName(this Type type)
+        switch (type.Name)
         {
-            switch (type.Name)
+            case nameof(SanityImageAsset):
             {
-                case nameof(SanityImageAsset):
-                    {
-                        return "sanity.imageAsset";
-                    }
-                case nameof(SanityFileAsset):
-                    {
-                        return "sanity.fileAsset";
-                    }
-                default:
-                    {
-                        // Remove Sanity and generic type marker from class name
-                        var name = type.Name
-                            .Replace("Sanity", "")
-                            .Replace("`1", "");
-
-                        //Make first letter lowercase (i.e. camelCase)
-                        return name.ToCamelCase();
-                    }
+                return "sanity.imageAsset";
             }
-            
+            case nameof(SanityFileAsset):
+            {
+                return "sanity.fileAsset";
+            }
+            default:
+            {
+                // Remove Sanity and generic type marker from class name
+                var name = type.Name
+                    .Replace("Sanity", "")
+                    .Replace("`1", "");
+
+                //Make first letter lowercase (i.e. camelCase)
+                return name.ToCamelCase();
+            }
         }
+            
     }
 }

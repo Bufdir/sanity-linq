@@ -1,17 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.CommonTypes
+public class SanitySlug(string current) : SanityObject
 {
-    public class SanitySlug : SanityObject
-    {
-        public SanitySlug(string current) : base()
-        {
-            Current = current;
-        }
-
-        public string Current { get; set; }
-        
-    }
+    public string Current { get; set; } = current;
 }

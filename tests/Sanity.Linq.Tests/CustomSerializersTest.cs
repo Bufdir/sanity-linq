@@ -1,45 +1,33 @@
-﻿using Sanity.Linq.Demo.Model;
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
+using Sanity.Linq.Demo.Model;
 using Xunit;
 
-namespace Sanity.Linq.Tests
-{ 
-    public class CustomSerializersTest : TestBase
+namespace Sanity.Linq.Tests;
+
+public class CustomSerializersTest : TestBase
+{
+    [Fact]
+    public Task SerializeToBootstrapTable()
     {
+        // Test of DataTable Object https://github.com/fredjens/sanity-datatable
 
-        [Fact]
-        public async Task SerializeToBootstrapTable()
+        var post = new Table
         {
-            // Test of DataTable Object https://github.com/fredjens/sanity-datatable
-
-            var post = new Table
-            {
-                Title = "Test Table",
-                Bootstrap = false,
-                Rows = new List<TableRow>()
+            Title = "Test Table",
+            Bootstrap = false,
+            Rows =
+            [
+                new TableRow
                 {
-                    new TableRow()
-                    {
-                         Cells = new string[] {"", "", ""}        //first row is headers
-                    }
+                    Cells = ["", "", ""] //first row is headers
                 }
-            };
+            ]
+        };
+        return Task.CompletedTask;
 
-
-
-
-
-            //get document from sanity
-            //build
-            //set marks
-            //return html
-
-
-        }
-
-
+        //get document from sanity
+        //build
+        //set marks
+        //return html
     }
 }

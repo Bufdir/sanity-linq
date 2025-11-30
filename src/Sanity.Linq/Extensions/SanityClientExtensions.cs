@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,25 +13,26 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Sanity.Linq.CommonTypes;
-using Sanity.Linq.DTOs;
-using Sanity.Linq.Internal;
-using Sanity.Linq.Mutations;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Sanity.Linq.CommonTypes;
+using Sanity.Linq.DTOs;
+using Sanity.Linq.Enums;
+using Sanity.Linq.Internal;
+using Sanity.Linq.Mutations;
 
-namespace Sanity.Linq
+namespace Sanity.Linq;
+
+public static class SanityClientExtensions
 {
-    public static class SanityClientExtensions
-    {
-        private static HttpClient _httpClient = new HttpClient();
+    private static readonly HttpClient HttpClient = new();
 
-        public static async Task<SanityDocumentResponse<SanityImageAsset>> UploadImageAsync(this SanityClient client, Uri imageUrl, string label = null, CancellationToken cancellationToken = default)
+    extension(SanityClient client)
+    {
+        public async Task<SanityDocumentResponse<SanityImageAsset>> UploadImageAsync(Uri imageUrl, string? label = null, CancellationToken cancellationToken = default)
         {
             if (imageUrl == null)
             {
@@ -45,15 +46,14 @@ namespace Sanity.Linq
             {
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
-            using (var fs = await _httpClient.GetStreamAsync(imageUrl).ConfigureAwait(false))
-            {
-                var result = await client.UploadImageAsync(fs, fileName, mimeType, label ?? "Source:" + imageUrl.OriginalString, cancellationToken).ConfigureAwait(false);
-                fs.Close();
-                return result;
-            }
+
+            await using var fs = await HttpClient.GetStreamAsync(imageUrl).ConfigureAwait(false);
+            var result = await client.UploadImageAsync(fs, fileName, mimeType, label ?? "Source:" + imageUrl.OriginalString, cancellationToken).ConfigureAwait(false);
+            fs.Close();
+            return result;
         }
 
-        public static async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(this SanityClient client, Uri fileUrl, string label = null, CancellationToken cancellationToken = default)
+        public async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(Uri fileUrl, string? label = null, CancellationToken cancellationToken = default)
         {
             if (fileUrl == null)
             {
@@ -67,52 +67,50 @@ namespace Sanity.Linq
             {
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
-            using (var fs = await _httpClient.GetStreamAsync(fileUrl).ConfigureAwait(false))
-            {
-                var result = await client.UploadFileAsync(fs, fileName, mimeType, label ?? "Source:" + fileUrl.OriginalString, cancellationToken).ConfigureAwait(false);
-                fs.Close();
-                return result;
-            }
+
+            await using var fs = await HttpClient.GetStreamAsync(fileUrl).ConfigureAwait(false);
+            var result = await client.UploadFileAsync(fs, fileName, mimeType, label ?? "Source:" + fileUrl.OriginalString, cancellationToken).ConfigureAwait(false);
+            fs.Close();
+            return result;
         }
 
-        public static Task<SanityMutationResponse<TDoc>> CreateAsync<TDoc>(this SanityClient client, TDoc document, CancellationToken cancellationToken = default)
+        public Task<SanityMutationResponse<TDoc>> CreateAsync<TDoc>(TDoc document, CancellationToken cancellationToken = default)
         {
             return client.BeginTransaction<TDoc>().Create(document).CommitAsync(false, true, SanityMutationVisibility.Sync, cancellationToken);
         }
 
-        public static Task<SanityMutationResponse<TDoc>> SetAsync<TDoc>(this SanityClient client, TDoc document, CancellationToken cancellationToken = default)
+        public Task<SanityMutationResponse<TDoc>> SetAsync<TDoc>(TDoc document, CancellationToken cancellationToken = default)
         {
             return client.BeginTransaction<TDoc>().SetValues(document).CommitAsync(false, true, SanityMutationVisibility.Sync, cancellationToken);
         }
 
-        public static Task<SanityMutationResponse> DeleteAsync(this SanityClient client, string id, CancellationToken cancellationToken = default)
+        public Task<SanityMutationResponse> DeleteAsync(string id, CancellationToken cancellationToken = default)
         {
             return client.BeginTransaction().DeleteById(id).CommitAsync(false, false, SanityMutationVisibility.Sync, cancellationToken);
         }
 
-        public static SanityMutationBuilder BeginTransaction(this SanityClient client)
+        public SanityMutationBuilder BeginTransaction()
         {
             return new SanityMutationBuilder(client);
         }
 
-        public static SanityMutationBuilder<TDoc> BeginTransaction<TDoc>(this SanityClient client)
+        public SanityMutationBuilder<TDoc> BeginTransaction<TDoc>()
         {
             return new SanityMutationBuilder(client).For<TDoc>();
         }
+    }
 
-        public static Task<SanityMutationResponse> CommitAsync(this SanityMutationBuilder transactionBuilder, bool returnIds = false, bool returnDocuments = true, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
-        {
-            var result = transactionBuilder.Client.CommitMutationsAsync(transactionBuilder.Build(transactionBuilder.Client.SerializerSettings), returnIds, returnDocuments, visibility, cancellationToken);
-            transactionBuilder.Clear();
-            return result;
-        }
+    public static Task<SanityMutationResponse> CommitAsync(this SanityMutationBuilder transactionBuilder, bool returnIds = false, bool returnDocuments = true, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
+    {
+        var result = transactionBuilder.Client.CommitMutationsAsync(transactionBuilder.Build(transactionBuilder.Client.SerializerSettings), returnIds, returnDocuments, visibility, cancellationToken);
+        transactionBuilder.Clear();
+        return result;
+    }
 
-        public static Task<SanityMutationResponse<TDoc>> CommitAsync<TDoc>(this SanityMutationBuilder<TDoc> transactionBuilder, bool returnIds = false, bool returnDocuments = true, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
-        {
-            var result = transactionBuilder.InnerBuilder.Client.CommitMutationsAsync<TDoc>(transactionBuilder.Build(), returnIds, returnDocuments, visibility, cancellationToken);
-            transactionBuilder.Clear();
-            return result;
-        }
-
+    public static Task<SanityMutationResponse<TDoc>> CommitAsync<TDoc>(this SanityMutationBuilder<TDoc> transactionBuilder, bool returnIds = false, bool returnDocuments = true, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
+    {
+        var result = transactionBuilder.InnerBuilder.Client.CommitMutationsAsync<TDoc>(transactionBuilder.Build(), returnIds, returnDocuments, visibility, cancellationToken);
+        transactionBuilder.Clear();
+        return result;
     }
 }

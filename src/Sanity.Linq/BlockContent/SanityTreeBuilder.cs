@@ -1,86 +1,90 @@
 ﻿using Newtonsoft.Json.Linq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq.BlockContent
+namespace Sanity.Linq.BlockContent;
+
+public class SanityTreeBuilder
 {
-    public class SanityTreeBuilder
+    public JArray Build(JArray blockArray)
     {
-        public JArray Build(JArray blockArray)
+        // set list trees / listItem = bullet | number && level != null
+        var currentListType = "";
+        for (var i = 0; i < blockArray.Count; i++)
         {
-            // set list trees / listItem = bullet | number && level != null
-            var currentListType = "";
-            for (int i = 0; i < blockArray.Count; i++)
+            var item = blockArray[i] as JObject;
+            if (item == null)
             {
-                JObject item = (JObject)blockArray[i];
+                continue;
+            }
 
-                if ((string)blockArray[i]["listItem"] == "bullet")
+            if ((string?)blockArray[i]["listItem"] == "bullet")
+            {
+                //check if first in bullet array
+                if (currentListType == "" && !item.ContainsKey("firstItem"))
                 {
-                    //check if first in bullet array
-                    if (currentListType == "" && !item.ContainsKey("firstItem"))
-                    {
-                        item.Add(new JProperty("firstItem", true));
-                    }
-
-                    currentListType = "bullet";
-
-                    // check if last in array, also last in bullet array 
-                    if (blockArray.Count == i+1)
-                    {
-                        if (!item.ContainsKey("lastItem"))
-                        {
-                            item.Add(new JProperty("lastItem", true));
-                        }
-                        currentListType = "";
-                        break;
-                    }
-
-                    //in the middle of array but last of bullet array
-                    if (currentListType == "bullet" && (string)blockArray[i + 1]["listItem"] == null || (string)blockArray[i + 1]["listItem"] == "number")
-                    {
-                        if (!item.ContainsKey("lastItem"))
-                        {
-                            item.Add(new JProperty("lastItem", true));
-                        }
-                        currentListType = "";
-                    }
+                    item.Add(new JProperty("firstItem", true));
                 }
 
-                if ((string)blockArray[i]["listItem"] == "number")
+                currentListType = "bullet";
+
+                // check if last in array, also last in bullet array 
+                if (blockArray.Count == i + 1)
                 {
-                    //check if first in bullet array
-                    if (currentListType == "" && !item.ContainsKey("firstItem"))
+                    if (!item.ContainsKey("lastItem"))
                     {
-                        item.Add(new JProperty("firstItem", true));
+                        item.Add(new JProperty("lastItem", true));
                     }
+                    currentListType = "";
+                    break;
+                }
 
-                    currentListType = "number";
-
-                    // check if last in array, also last in bullet array 
-                    if (blockArray.Count == i + 1)
+                //in the middle of array but last of bullet array
+                var nextListItem = (string?)blockArray[i + 1]["listItem"];
+                if (currentListType == "bullet" && (nextListItem == null || nextListItem == "number"))
+                {
+                    if (!item.ContainsKey("lastItem"))
                     {
-                        if (!item.ContainsKey("lastItem"))
-                        {
-                            item.Add(new JProperty("lastItem", true));
-                        }
-                        currentListType = "";
-                        break;
+                        item.Add(new JProperty("lastItem", true));
                     }
-
-                    //in the middle of array but last of bullet array
-                    if (currentListType == "number" && (string)blockArray[i + 1]["listItem"] == null || (string)blockArray[i + 1]["listItem"] == "bullet")
-                    {
-                        if (!item.ContainsKey("lastItem"))
-                        {
-                            item.Add(new JProperty("lastItem", true));
-                        }
-                        currentListType = "";
-                    }
+                    currentListType = "";
                 }
             }
 
-            return blockArray;
+            if ((string?)blockArray[i]["listItem"] != "number")
+            {
+                continue;
+            }
+
+            //check if first in bullet array
+            if (currentListType == "" && !item.ContainsKey("firstItem"))
+            {
+                item.Add(new JProperty("firstItem", true));
+            }
+
+            currentListType = "number";
+
+            // check if last in array, also last in bullet array 
+            if (blockArray.Count == i + 1)
+            {
+                if (!item.ContainsKey("lastItem"))
+                {
+                    item.Add(new JProperty("lastItem", true));
+                }
+                currentListType = "";
+                break;
+            }
+
+            //in the middle of array but last of bullet array
+            var nextListItem2 = (string?)blockArray[i + 1]["listItem"];
+            if (currentListType == "number" && (nextListItem2 == null || nextListItem2 == "bullet"))
+            {
+                if (!item.ContainsKey("lastItem"))
+                {
+                    item.Add(new JProperty("lastItem", true));
+                }
+                currentListType = "";
+            }
         }
+
+        return blockArray;
     }
 }

@@ -1,29 +1,21 @@
-﻿using Sanity.Linq.CommonTypes;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
+using Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.Demo.Model
+namespace Sanity.Linq.Demo.Model;
+
+public class Table : SanityDocument
 {
-    public class Table : SanityDocument
-    {
-        public Table() : base()
-        {
-            
-        }
+    public string Title { get; set; } = string.Empty;
 
-        public string Title { get; set; }
+    public bool Bootstrap { get; set; }
 
-        public bool Bootstrap { get; set; }
+    //TODO: add bootstrap options
 
-        //TODO: add bootstrap options
+    public List<TableRow> Rows { get; set; } = [];
 
-        public List<TableRow> Rows { get; set; }
+}
 
-    }
-
-    public class TableRow : SanityObject
-    {
-        public string[] Cells { get; set; }
-    }
+public class TableRow : SanityObject
+{
+    public string[] Cells { get; set; } = [];
 }

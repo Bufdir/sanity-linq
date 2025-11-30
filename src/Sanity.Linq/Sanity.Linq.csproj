@@ -1,5 +1,5 @@
 ﻿<!--
-Copywrite 2018 Oslofjord Operations AS
+Copy-write 2018 Oslofjord Operations AS
 
 This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -21,7 +21,7 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks>netstandard2.1;net10.0</TargetFrameworks>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Authors>Oslofjord Operations AS</Authors>
     <Company>Oslofjord Operations AS</Company>
@@ -34,13 +34,16 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
     <RepositoryUrl>https://github.com/oslofjord/sanity-linq</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>sanity cms dotnet linq client groq</PackageTags>
-    <PackageLicenseUrl>https://raw.githubusercontent.com/oslofjord/sanity-linq/master/LICENSE</PackageLicenseUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <AssemblyVersion>1.7.1.0</AssemblyVersion>
     <PackageId>Sanity.Linq</PackageId>
     <AssemblyName>Sanity.Linq</AssemblyName>
     <RootNamespace>Sanity.Linq</RootNamespace>
     <FileVersion>1.7.1.0</FileVersion>
-    <PackageReleaseNotes>1.0 - Sanity Linq library
+	  <Nullable>enable</Nullable>
+	  <LangVersion>latest</LangVersion>
+	  <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+	  <PackageReleaseNotes>1.0 - Sanity Linq library
 1.1 - BlockContent library
 1.1.1 - Improvements BlockContent
 1.1.2 - Fixed bug where SanityLocale.Get() would not work with strings.
@@ -75,9 +78,9 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 	</PropertyGroup>
 
   <ItemGroup>
-	<PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
-	<PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+	<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+	<PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
 </Project>

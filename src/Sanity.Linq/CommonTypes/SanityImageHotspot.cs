@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,16 +13,15 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-namespace Sanity.Linq.CommonTypes
+namespace Sanity.Linq.CommonTypes;
+
+public class SanityImageHotspot
 {
-    public class SanityImageHotspot
-    {
-        public double Height { get; set; }
+    public double Height { get; set; }
 
-        public double Width { get; set; }
+    public double Width { get; set; }
 
-        public double X { get; set; }
+    public double X { get; set; }
 
-        public double Y { get; set; }
-    }
+    public double Y { get; set; }
 }

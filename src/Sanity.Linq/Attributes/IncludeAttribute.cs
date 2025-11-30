@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,23 +14,20 @@
 //  along with this program.
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq
+namespace Sanity.Linq;
+
+[AttributeUsage(AttributeTargets.Property)]
+public class IncludeAttribute : Attribute
 {
-    [AttributeUsage(AttributeTargets.Property)]
-    public class IncludeAttribute : Attribute
+    public IncludeAttribute()
     {
-        public IncludeAttribute()
-        {
-        }
-
-        public IncludeAttribute(string fieldName)
-        {
-            FieldName = fieldName;
-        }
-
-        public string FieldName { get; }
     }
+
+    public IncludeAttribute(string fieldName)
+    {
+        FieldName = fieldName;
+    }
+
+    public string? FieldName { get; }
 }

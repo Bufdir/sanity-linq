@@ -1,4 +1,4 @@
-// Copywrite 2021 Oslofjord Convention Center AS
+// Copy-write 2021 Oslofjord Convention Center AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,21 +13,14 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Newtonsoft.Json;
-using Sanity.Linq.CommonTypes;
-using System;
-using System.Collections.Generic;
-using System.Text;
+namespace Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.CommonTypes
+public class SanityFile : SanityObject
 {
-    public class SanityFile : SanityObject
+    public SanityFile()
     {
-        public SanityFile() : base()
-        {
-            SanityType = "file";
-        }
-
-        public SanityReference<SanityFileAsset> Asset { get; set; }
+        SanityType = "file";
     }
+
+    public SanityReference<SanityFileAsset>? Asset { get; set; }
 }

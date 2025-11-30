@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,37 +13,33 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Newtonsoft.Json;
-using Sanity.Linq.Extensions;
 using System;
-using System.Collections.Generic;
-using System.Text;
+using Newtonsoft.Json;
 
-namespace Sanity.Linq.CommonTypes
+namespace Sanity.Linq.CommonTypes;
+
+public class SanityDocument
 {
-    public class SanityDocument
+    public SanityDocument()
     {
-        public SanityDocument()
-        {
-            SanityType = GetType().GetSanityTypeName();
-        }
-
-        [JsonProperty("_id")]
-        public string Id { get; set; }
-
-        [JsonProperty("_type")]
-        public string SanityType { get; set; }
-
-        [JsonProperty("_rev")]
-        public string SanityRevision { get; set; }
-
-        [JsonProperty("_key")]
-        public string SanityKey { get; set; }
-
-        [JsonProperty("_createdAt")]
-        public DateTimeOffset? SanityCreatedAt { get; set; }
-
-        [JsonProperty("_updatedAt")]
-        public DateTimeOffset? SanityUpdatedAt { get; set; }
+        SanityType = GetType().GetSanityTypeName();
     }
+
+    [JsonProperty("_id")]
+    public string? Id { get; set; }
+
+    [JsonProperty("_type")]
+    public string SanityType { get; set; }
+
+    [JsonProperty("_rev")]
+    public string? SanityRevision { get; set; }
+
+    [JsonProperty("_key")]
+    public string? SanityKey { get; set; }
+
+    [JsonProperty("_createdAt")]
+    public DateTimeOffset? SanityCreatedAt { get; set; }
+
+    [JsonProperty("_updatedAt")]
+    public DateTimeOffset? SanityUpdatedAt { get; set; }
 }

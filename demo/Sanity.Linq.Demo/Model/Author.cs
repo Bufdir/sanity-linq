@@ -1,28 +1,20 @@
-﻿using Sanity.Linq.CommonTypes;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
+using Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.Demo.Model
+namespace Sanity.Linq.Demo.Model;
+
+public class Author : SanityDocument
 {
-    public class Author : SanityDocument
-    {
-        public Author() 
-            : base()
-        {
-        }
+    public string Name { get; set; } = string.Empty;
 
-        public string Name { get; set; }
+    public SanitySlug? Slug { get; set; }
 
-        public SanitySlug Slug { get; set; }
+    [Include]
+    public List<SanityReference<Category>> FavoriteCategories { get; set; } = [];
 
-        [Include]
-        public List<SanityReference<Category>> FavoriteCategories { get; set; }
+    [Include]
+    public SanityImage[] Images { get; set; } = [];
 
-        [Include]
-        public SanityImage[] Images { get; set; }
+    public object[] Bio { get; set; } = [];
 
-        public object[] Bio { get; set; }
-
-    }
 }

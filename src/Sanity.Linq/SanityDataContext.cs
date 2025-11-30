@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,144 +14,156 @@
 //  along with this program.
 
 
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
-using Sanity.Linq.BlockContent;
-using Sanity.Linq.CommonTypes;
-using Sanity.Linq.DTOs;
-using Sanity.Linq.Mutations;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
+using Sanity.Linq.BlockContent;
+using Sanity.Linq.CommonTypes;
+using Sanity.Linq.DTOs;
+using Sanity.Linq.Enums;
+using Sanity.Linq.JsonConverters;
+using Sanity.Linq.Mutations;
 
-namespace Sanity.Linq
+namespace Sanity.Linq;
+
+/// <summary>
+/// Linq-to-Sanity Data Context.
+/// Handles initialization of SanityDbSets defined in inherited classes.
+/// </summary>
+public class SanityDataContext
 {
+
+    private readonly object _dsLock = new();
+    private readonly ConcurrentDictionary<string, SanityDocumentSet> _documentSets = new();
+
+    internal bool IsShared { get; }
+
+    public SanityClient Client { get; }
+
+    public SanityMutationBuilder Mutations { get; }
+
+    public JsonSerializerSettings SerializerSettings { get; }
+    public JsonSerializerSettings DeserializerSettings { get; }
+
+    public SanityHtmlBuilder HtmlBuilder { get; set; }
+
     /// <summary>
-    /// Linq-to-Sanity Data Context.
-    /// Handles intialization of SanityDbSets defined in inherited classes.
+    /// Create a new SanityDbContext using the specified options.
     /// </summary>
-    public class SanityDataContext
+    /// <param name="options"></param>
+    /// <param name="serializerSettings"></param>
+    /// <param name="htmlBuilderOptions"></param>
+    /// <param name="clientFactory"></param>
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null) : this (options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory) { }
+
+    /// <summary>
+    /// Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
+    /// </summary>
+    /// <param name="options"></param>
+    /// <param name="serializerSettings"></param>
+    /// <param name="deserializerSettings"></param>
+    /// <param name="htmlBuilderOptions"></param>
+    /// <param name="clientFactory"></param>
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null)
     {
-
-        private object _dsLock = new object();
-        private ConcurrentDictionary<string, SanityDocumentSet> _documentSets = new ConcurrentDictionary<string, SanityDocumentSet>();
-
-        internal bool IsShared { get; }
-
-        public SanityClient Client { get; }
-
-        public SanityMutationBuilder Mutations { get; }
-
-        public JsonSerializerSettings SerializerSettings { get; }
-        public JsonSerializerSettings DeserializerSettings { get; }
-
-        public SanityHtmlBuilder HtmlBuilder { get; set; }
-
-        /// <summary>
-        /// Create a new SanityDbContext using the specified options.
-        /// </summary>
-        /// <param name="options"></param>
-        public SanityDataContext(SanityOptions options, JsonSerializerSettings serializerSettings = null, SanityHtmlBuilderOptions htmlBuilderOptions = null, IHttpClientFactory clientFactory = null) : this (options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory) { }
-
-        /// <summary>
-        /// Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
-        /// </summary>
-        /// <param name="options"></param>
-        public SanityDataContext(SanityOptions options, JsonSerializerSettings serializerSettings, JsonSerializerSettings deserializerSettings, SanityHtmlBuilderOptions htmlBuilderOptions = null, IHttpClientFactory clientFactory = null)
+        if (options == null)
         {
-            if (options == null)
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var defaultSerializerSettings = new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore,
+            Converters = new List<JsonConverter> { new SanityReferenceTypeConverter() }
+        };
+
+        SerializerSettings = serializerSettings ?? defaultSerializerSettings;
+        DeserializerSettings = deserializerSettings ?? defaultSerializerSettings;
+        Client = new SanityClient(options, SerializerSettings, DeserializerSettings, clientFactory);
+        Mutations = new SanityMutationBuilder(Client);
+        HtmlBuilder = new SanityHtmlBuilder(options, null, SerializerSettings, htmlBuilderOptions);
+    }
+
+    /// <summary>
+    /// Create a new SanityDbContext using the specified options.
+    /// </summary>
+    /// <param name="options"></param>
+    /// <param name="isShared">Indicates that the context can be used by multiple SanityDocumentSets</param>
+    internal SanityDataContext(SanityOptions options, bool isShared) : this(options, serializerSettings: null, deserializerSettings: null, htmlBuilderOptions: null, clientFactory: null)
+    {
+        IsShared = isShared;
+    }             
+
+    /// <summary>
+    /// Returns an IQueryable document set for specified type
+    /// </summary>
+    /// <typeparam name="TDoc"></typeparam>
+    /// <returns></returns>
+    public virtual SanityDocumentSet<TDoc> DocumentSet<TDoc>(int maxNestingLevel = 7)
+    {
+        var key = $"{typeof(TDoc).FullName ?? ""}_{maxNestingLevel}";
+        lock (_dsLock)
+        {
+            if (!_documentSets.ContainsKey(key))
             {
-                throw new ArgumentNullException(nameof(options));
+                _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
             }
-
-            var defaultSerializerSettings = new JsonSerializerSettings
-            {
-                ContractResolver = new CamelCasePropertyNamesContractResolver(),
-                NullValueHandling = NullValueHandling.Ignore,
-                Converters = new List<JsonConverter> { new SanityReferenceTypeConverter() }
-            };
-
-            SerializerSettings = serializerSettings ?? defaultSerializerSettings;
-            DeserializerSettings = deserializerSettings ?? defaultSerializerSettings;
-            Client = new SanityClient(options, SerializerSettings, DeserializerSettings, clientFactory);
-            Mutations = new SanityMutationBuilder(Client);
-            HtmlBuilder = new SanityHtmlBuilder(options, null, SerializerSettings, htmlBuilderOptions);
         }
-
-        /// <summary>
-        /// Create a new SanityDbContext using the specified options.
-        /// </summary>
-        /// <param name="options"></param>
-        /// <param name="isShared">Indicates that the context can be used by multiple SanityDocumentSets</param>
-        internal SanityDataContext(SanityOptions options, bool isShared) : this(options, htmlBuilderOptions: null, serializerSettings: null, deserializerSettings: null, clientFactory: null)
+        lock (_dsLock)
         {
-            IsShared = isShared;
-        }             
-
-        /// <summary>
-        /// Returns an IQueryable document set for specified type
-        /// </summary>
-        /// <typeparam name="TDoc"></typeparam>
-        /// <returns></returns>
-        public virtual SanityDocumentSet<TDoc> DocumentSet<TDoc>(int maxNestingLevel = 7)
-        {
-            var key = $"{typeof(TDoc)?.FullName ?? ""}_{maxNestingLevel}";
-            lock (_dsLock)
-            {
-                if (!_documentSets.ContainsKey(key))
-                {
-                    _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
-                }
-            }
-            return _documentSets[key] as SanityDocumentSet<TDoc>;
+            return (_documentSets[key] as SanityDocumentSet<TDoc>)!;
         }
+    }
 
-        public virtual SanityDocumentSet<SanityImageAsset> Images => DocumentSet<SanityImageAsset>(2);
+    public virtual SanityDocumentSet<SanityImageAsset> Images => DocumentSet<SanityImageAsset>(2);
 
-        public virtual SanityDocumentSet<SanityFileAsset> Files => DocumentSet<SanityFileAsset>(2);
+    public virtual SanityDocumentSet<SanityFileAsset> Files => DocumentSet<SanityFileAsset>(2);
 
-        public virtual SanityDocumentSet<SanityDocument> Documents => DocumentSet<SanityDocument>(2);
+    public virtual SanityDocumentSet<SanityDocument> Documents => DocumentSet<SanityDocument>(2);
 
-        public virtual void ClearChanges()
+    public virtual void ClearChanges()
+    {
+        Mutations.Clear();
+    }
+
+    /// <summary>
+    /// Sends all changes registered on Document sets to Sanity as a transactional set of mutations.
+    /// </summary>
+    /// <param name="returnIds"></param>
+    /// <param name="returnDocuments"></param>
+    /// <param name="visibility"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task<SanityMutationResponse> CommitAsync(bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
+    {
+        var result = await Client.CommitMutationsAsync(Mutations.Build(Client.SerializerSettings), returnIds, returnDocuments, visibility, cancellationToken).ConfigureAwait(false);
+        Mutations.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// Sends all changes registered on document sets of specified type to Sanity as a transactional set of mutations.
+    /// </summary>
+    /// <param name="returnIds"></param>
+    /// <param name="returnDocuments"></param>
+    /// <param name="visibility"></param>
+    /// <returns></returns>
+    public async Task<SanityMutationResponse<TDoc>> CommitAsync<TDoc>(bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
+    {
+        var mutations = Mutations.For<TDoc>();
+        if (mutations.Mutations.Count > 0)
         {
-            Mutations.Clear();
-        }
-
-        /// <summary>
-        /// Sends all changes registered on Document sets to Sanity as a transactional set of mutations.
-        /// </summary>
-        /// <param name="returnIds"></param>
-        /// <param name="returnDocuments"></param>
-        /// <param name="visibility"></param>
-        /// <returns></returns>
-        public async Task<SanityMutationResponse> CommitAsync(bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
-        {
-            var result = await Client.CommitMutationsAsync(Mutations.Build(Client.SerializerSettings), returnIds, returnDocuments, visibility, cancellationToken).ConfigureAwait(false);
-            Mutations.Clear();
+            var result = await Client.CommitMutationsAsync<TDoc>(mutations.Build(), returnIds, returnDocuments, visibility, cancellationToken).ConfigureAwait(false);
+            mutations.Clear();
             return result;
         }
-
-        /// <summary>
-        /// Sends all changes registered on document sets of specified type to Sanity as a transactional set of mutations.
-        /// </summary>
-        /// <param name="returnIds"></param>
-        /// <param name="returnDocuments"></param>
-        /// <param name="visibility"></param>
-        /// <returns></returns>
-        public async Task<SanityMutationResponse<TDoc>> CommitAsync<TDoc>(bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
-        {
-            var mutations = Mutations.For<TDoc>();
-            if (mutations.Mutations.Count > 0)
-            {
-                var result = await Client.CommitMutationsAsync<TDoc>(mutations.Build(), returnIds, returnDocuments, visibility, cancellationToken).ConfigureAwait(false);
-                mutations.Clear();
-                return result;
-            }
-            throw new Exception($"No pending changes for document type {typeof(TDoc)}");
-        }
-
+        throw new Exception($"No pending changes for document type {typeof(TDoc)}");
     }
+
 }

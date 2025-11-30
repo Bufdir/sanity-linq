@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,14 +13,13 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Newtonsoft.Json;
 using System;
+using Newtonsoft.Json;
 
-namespace Sanity.Linq.Mutations
+namespace Sanity.Linq.Mutations.Model;
+
+public abstract class SanityMutation
 {
-    public abstract class SanityMutation
-    {
-        [JsonIgnore]
-        public Type DocType { get; set; } 
-    }
+    [JsonIgnore]
+    public Type? DocType { get; set; } 
 }

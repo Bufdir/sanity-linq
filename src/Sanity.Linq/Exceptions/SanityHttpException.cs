@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,29 +14,26 @@
 //  along with this program.
 
 using System;
-using System.Collections.Generic;
 using System.Net;
-using System.Text;
 
-namespace Sanity.Linq
+namespace Sanity.Linq.Exceptions;
+
+public class SanityHttpException : Exception
 {
-    public class SanityHttpException : Exception
+    public SanityHttpException()
     {
-        public SanityHttpException()
-        {
-        }
-
-        public SanityHttpException(string message) : base(message)
-        {
-        }
-
-        public SanityHttpException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-
-        public HttpStatusCode StatusCode { get; set; }
-
-        public string Content { get; set; }
-
     }
+
+    public SanityHttpException(string message) : base(message)
+    {
+    }
+
+    public SanityHttpException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
+
+    public HttpStatusCode StatusCode { get; set; }
+
+    public string Content { get; set; } = string.Empty;
+
 }

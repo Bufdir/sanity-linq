@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,24 +13,20 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using Sanity.Linq.Extensions;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq.Mutations
+namespace Sanity.Linq.Mutations.Model;
+
+public class SanityCreateIfNotExistsMutation : SanityMutation
 {
-    public class SanityCreateIfNotExistsMutation : SanityMutation
-    {
-        public SanityCreateIfNotExistsMutation(object document)
-        {            
-            if (document == null) throw new ArgumentNullException(nameof(document));
-            if (!document.HasIdProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
-            if (!document.HasDocumentTypeProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
+    public SanityCreateIfNotExistsMutation(object document)
+    {            
+        if (document == null) throw new ArgumentNullException(nameof(document));
+        if (!document.HasIdProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
+        if (!document.HasDocumentTypeProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
 
-            CreateIfNotExists = document;
-        }
-
-        public object CreateIfNotExists { get; set; }
+        CreateIfNotExists = document;
     }
+
+    public object CreateIfNotExists { get; set; }
 }

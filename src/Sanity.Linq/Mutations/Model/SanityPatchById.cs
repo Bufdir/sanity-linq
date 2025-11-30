@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -14,34 +14,31 @@
 //  along with this program.
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Sanity.Linq.Mutations
+namespace Sanity.Linq.Mutations.Model;
+
+public class SanityPatchById<TDoc> : SanityPatchById
 {
-    public class SanityPatchById<TDoc> : SanityPatchById
+    public SanityPatchById()
     {
-        public SanityPatchById()
-        {
-        }
-        public SanityPatchById(string id) : base(id)
-        {
-        }
     }
-    public class SanityPatchById : SanityPatch
+    public SanityPatchById(string id) : base(id)
     {
-        public SanityPatchById() { }
-        public SanityPatchById(string id) : base()
+    }
+}
+public class SanityPatchById : SanityPatch
+{
+    public SanityPatchById() { }
+    public SanityPatchById(string id)
+    {
+        if (string.IsNullOrEmpty(id))
         {
-            if (string.IsNullOrEmpty(id))
-            {
-                throw new ArgumentException("Id field must be set", nameof(id));
-            }
-
-            Id = id;
+            throw new ArgumentException("Id field must be set", nameof(id));
         }
 
-        public string Id { get; set; }         
+        Id = id;
+    }
+
+    public string? Id { get; set; }         
         
-    }
 }

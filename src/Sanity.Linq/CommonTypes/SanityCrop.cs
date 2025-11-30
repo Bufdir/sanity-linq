@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,20 +13,15 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+namespace Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.CommonTypes
+public class SanityImageCrop
 {
-    public class SanityImageCrop
-    {
-        public double Bottom { get; set; }
+    public double Bottom { get; set; }
 
-        public double Left { get; set; }
+    public double Left { get; set; }
 
-        public double Right { get; set; }
+    public double Right { get; set; }
 
-        public double Top { get; set; }
-    }
+    public double Top { get; set; }
 }

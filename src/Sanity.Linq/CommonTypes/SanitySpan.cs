@@ -1,17 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace Sanity.Linq.CommonTypes;
 
-namespace Sanity.Linq.CommonTypes
+public class SanitySpan : SanityObject
 {
-    public class SanitySpan : SanityObject
-    {
-        public SanitySpan() : base()
-        {
-        }
+    public string Text { get; set; } = string.Empty;
 
-        public string Text { get; set; }
-
-        public string[] Marks { get; set; }
-    }
+    public string[] Marks { get; set; } = [];
 }

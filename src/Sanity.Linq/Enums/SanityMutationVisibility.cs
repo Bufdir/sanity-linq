@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,22 +13,16 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+namespace Sanity.Linq.Enums;
 
-namespace Sanity.Linq
+public enum SanityMutationVisibility
 {
+    // "sync": the request will not return until the requested changes are visible to subsequent queries
+    Sync = 0,
 
-    public enum SanityMutationVisibility
-    {
-        // "sync": the request will not return until the requested changes are visible to subsequent queries
-        Sync = 0,
+    // "async": the request will return immediately when the changes have been committed, but it might still be a second or so until you can see the change reflected in a query. For maximum performance, use "async" always, except when you need your next query to see the changes you made 
+    Async = 1,
 
-        // "async": the request will return immediately when the changes have been committed, but it might still be a second or so until you can see the change reflected in a query. For maximum performance, use "async" always, except when you need your next query to see the changes you made 
-        Async = 1,
-
-        // "deferred" is the fastest way to write. It bypasses the real time indexing completely, and should be used in cases where you are bulk importing/mutating a large number of documents and don't need to see that data in a query for several tens of seconds.
-        Deferred = 2
-    }
+    // "deferred" is the fastest way to write. It bypasses the real time indexing completely, and should be used in cases where you are bulk importing/mutating a large number of documents and don't need to see that data in a query for several tens of seconds.
+    Deferred = 2
 }

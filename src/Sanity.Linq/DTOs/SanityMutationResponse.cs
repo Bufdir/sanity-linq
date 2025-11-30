@@ -1,4 +1,4 @@
-﻿// Copywrite 2018 Oslofjord Operations AS
+﻿// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -13,21 +13,16 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
+namespace Sanity.Linq.DTOs;
 
-namespace Sanity.Linq.DTOs
+public class SanityMutationResponse
 {
-    public class SanityMutationResponse
-    {
-        public string TransactionId { get; set; }
-        public SanityMutationResult[] Results { get; set; }
-    }
+    public string TransactionId { get; set; } = string.Empty;
+    public SanityMutationResult[] Results { get; set; } = [];
+}
 
-    public class SanityMutationResponse<TDoc>
-    {
-        public string TransactionId { get; set; }
-        public SanityMutationResult<TDoc>[] Results { get; set; }
-    }
+public class SanityMutationResponse<TDoc>
+{
+    public string TransactionId { get; set; } = string.Empty;
+    public SanityMutationResult<TDoc>[] Results { get; set; } = [];
 }

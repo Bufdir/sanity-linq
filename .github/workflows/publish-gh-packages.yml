@@ -1,0 +1,56 @@
+﻿name: Publish NuGet (GitHub Packages)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore sanity-linq.sln
+
+      - name: Build (Release)
+        run: dotnet build sanity-linq.sln -c Release --no-restore
+
+      - name: Derive version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          VER=${TAG#v}
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
+      - name: Pack
+        run: >
+          dotnet pack src/Sanity.Linq/Sanity.Linq.csproj
+          -c Release --no-build
+          -p:ContinuousIntegrationBuild=true
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+          -o ./artifacts
+
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          dotnet nuget push "./artifacts/*.nupkg"
+          --api-key "$GITHUB_TOKEN"
+          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --skip-duplicate

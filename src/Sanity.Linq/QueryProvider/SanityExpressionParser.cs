@@ -543,18 +543,9 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                         throw new Exception("Selections must be anonymous types without a constructor.");
                     }
 
-                    var projection = new List<string>();
-                    for (var i = 0; i < args.Length; i++)
-                    {
-                        if (args[i].Equals(props[i]))
-                        {
-                            projection.Add(args[i]);
-                        }
-                        else
-                        {
-                            projection.Add($"\"{props[i]}\": {args[i]}");
-                        }
-                    }
+                    var projection = args
+                        .Select((t, i) => t.Equals(props[i]) ? t : $"\"{props[i]}\": {t}")
+                        .ToList();
                     return projection.Aggregate((pc, pn) => $"{pc}, {pn}");
                 }
             // Binary

@@ -120,76 +120,31 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string HandleContains(MethodCallExpression e)
     {
-        // Support both instance method (list.Contains(x)) and static Enumerable.Contains(list, x)
-        Expression? collectionExpr = null;
-        Expression? valueExpr = null;
-        if (e is { Object: not null, Arguments.Count: 1 })
+        // Try resolve standard shapes: instance and static Contains
+        if (TryGetParts(e, out var collectionExpr, out var valueExpr) && collectionExpr != null && valueExpr != null)
         {
-            collectionExpr = e.Object;
-            valueExpr = e.Arguments[0];
-        }
-        else if (e.Object == null && e.Arguments.Count == 2)
-        {
-            collectionExpr = e.Arguments[0];
-            valueExpr = e.Arguments[1];
-        }
-
-        if (collectionExpr != null && valueExpr != null)
-        {
-            // Try evaluate collectionExpr to a constant IEnumerable (closure/local/constant)
-            object? enumerableObj = null;
-            var simplified = Evaluator.PartialEval(collectionExpr);
-            if (simplified is ConstantExpression c1)
+            // Case 1: enumerable constant/list: titles.Contains(p.Title)
+            var eval = TryEvaluate(collectionExpr);
+            if (eval is IEnumerable ie and not string)
             {
-                enumerableObj = c1.Value;
-            }
-            else
-            {
-                try
-                {
-                    enumerableObj = Expression.Lambda(simplified).Compile().DynamicInvoke();
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
-
-            if (enumerableObj is IEnumerable ie1 and not string)
-            {
-                // Case: titles.Contains(p.Title)
                 var memberName = TransformOperand(valueExpr);
-                var values = ie1.Cast<object?>().Where(o => o != null).ToArray();
-                if (values.Length == 0)
-                {
-                    return $"{memberName} in []";
-                }
-                var first = values[0]!;
-                var t = first.GetType();
-                if (t == typeof(string) || t == typeof(Guid))
-                {
-                    return $"{memberName} in [\"{string.Join("\",\"", values)}\"]";
-                }
-                return $"{memberName} in [{string.Join(",", values)}]";
+                return $"{memberName} in {JoinValues(ie)}";
             }
 
-            // Fallback: property.Contains(constant) represented as Enumerable.Contains(property, constant)
+            // Case 2: property.Contains(constant)
             if (collectionExpr is MemberExpression && valueExpr is not MemberExpression)
             {
                 var memberName = TransformOperand(collectionExpr);
                 var simplifiedValue = Evaluator.PartialEval(valueExpr);
                 if (simplifiedValue is ConstantExpression { Value: not null } c2)
                 {
-                    if (c2.Type == typeof(string) || c2.Type == typeof(Guid))
-                    {
-                        return $"\"{c2.Value}\" in {memberName}";
-                    }
-
-                    return $"{c2.Value} in {memberName}";
+                    return (c2.Type == typeof(string) || c2.Type == typeof(Guid))
+                        ? $"\"{c2.Value}\" in {memberName}"
+                        : $"{c2.Value} in {memberName}";
                 }
             }
 
-            // property.Contains(otherProperty) -> "otherProperty in property"
+            // Case 3: property.Contains(otherProperty)
             var collUnwrapped = collectionExpr is UnaryExpression { NodeType: ExpressionType.Convert } uc ? uc.Operand : collectionExpr;
             var valUnwrapped = valueExpr is UnaryExpression { NodeType: ExpressionType.Convert } uv ? uv.Operand : valueExpr;
             if (collUnwrapped is MemberExpression && valUnwrapped is MemberExpression)
@@ -199,7 +154,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                 return $"{right} in {left}";
             }
 
-            // Generic fallback
+            // Case 4: generic fallback
             var leftAny = TransformOperand(collectionExpr);
             var rightAny = TransformOperand(valueExpr);
             if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny))
@@ -207,9 +162,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                 return $"{rightAny} in {leftAny}";
             }
         }
-        else if (e.Arguments.Count == 2)
+
+        // Legacy branch: two-arg form when parsing fallback
+        if (e.Arguments.Count == 2)
         {
-            // .Where(p => p.Tags.Contains("Alians"))
             var memberName = TransformOperand(e.Arguments[0]);
             var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
             if (simplifiedValue is not ConstantExpression c2)
@@ -223,15 +179,58 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                 throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
             }
 
-            if (c2.Type == typeof(string) || c2.Type == typeof(Guid))
-            {
-                return $"\"{valueObj}\" in {memberName}";
-            }
-
-            return $"{valueObj} in {memberName}";
+            return (c2.Type == typeof(string) || c2.Type == typeof(Guid))
+                ? $"\"{valueObj}\" in {memberName}"
+                : $"{valueObj} in {memberName}";
         }
 
         throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+
+        static object? TryEvaluate(Expression expr)
+        {
+            var simplified = Evaluator.PartialEval(expr);
+            if (simplified is ConstantExpression c)
+            {
+                return c.Value;
+            }
+
+            try { return Expression.Lambda(simplified).Compile().DynamicInvoke(); }
+            catch { return null; }
+        }
+
+        // Local helpers to reduce nesting
+        static bool TryGetParts(MethodCallExpression call, out Expression? coll, out Expression? val)
+        {
+            if (call is { Object: not null, Arguments.Count: 1 })
+            {
+                coll = call.Object;
+                val = call.Arguments[0];
+                return true;
+            }
+            if (call.Object == null && call.Arguments.Count == 2)
+            {
+                coll = call.Arguments[0];
+                val = call.Arguments[1];
+                return true;
+            }
+            coll = null;
+            val = null;
+            return false;
+        }
+
+        static string JoinValues(IEnumerable values)
+        {
+            var arr = values.Cast<object?>().Where(o => o != null).ToArray();
+            if (arr.Length == 0) return "[]";
+            var first = arr[0]!;
+            var t = first.GetType();
+            if (t == typeof(string) || t == typeof(Guid))
+            {
+                // Quote string-like entries without adding backslashes to the output
+                return $"[\"{string.Join("\",\"", arr)}\"]";
+            }
+            return $"[{string.Join(",", arr)}]";
+        }
     }
 
     private string HandleCount(MethodCallExpression e)

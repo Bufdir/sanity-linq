@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using Sanity.Linq.Demo.Model;
 using Xunit;
 
@@ -25,5 +26,17 @@ public class TestBase
         await sanity.CommitAsync();
 
         await sanity.Images.Delete().CommitAsync();
+    }
+
+    protected static async Task WaitUntilAsync(Func<Task<bool>> condition, int maxRetries = 15, int delayMs = 300)
+    {
+        for (var i = 0; i < maxRetries; i++)
+        {
+            if (await condition()) return;
+            await Task.Delay(delayMs);
+        }
+        // One last attempt before giving up
+        if (!await condition())
+            throw new TimeoutException("Condition not met within the allotted retries");
     }
 }

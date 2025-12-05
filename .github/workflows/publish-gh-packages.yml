@@ -45,8 +45,8 @@ jobs:
           dotnet tool install -g GitVersion.Tool --version 6.*
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Calculating version with GitVersion CLI..."
-          SEMVER=$(gitversion /showvariable SemVer /config GitVersion.yml /nocache)
-          NUGET=$(gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache)
+          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache)
+          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache)
           echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "NuGetVersionV2=$NUGET" >> "$GITHUB_OUTPUT"
 
@@ -62,7 +62,7 @@ jobs:
           dotnet tool install -g GitVersion.Tool --version 6.* || true
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Running gitversion /diag for troubleshooting..."
-          gitversion /output json /diag || true
+          dotnet-gitversion /output json /diag || true
 
       - name: Pack
         run: >

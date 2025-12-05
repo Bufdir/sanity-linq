@@ -52,6 +52,9 @@ public class QueryTests : TestBase
             .Create(category3)
             .CommitAsync();
 
+        // Sanity may be eventually consistent for queries; wait until all 3 are visible
+        await WaitUntilAsync(async () => (await categories.ToListAsync()).Count == 3);
+
         // Test 1
         // *[title in ["Conventions", "Festivals"]]
         // .Where(p => ids.Contains(p.Id))

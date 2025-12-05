@@ -1,11 +1,6 @@
 ﻿// References:
 // https://msdn.microsoft.com/en-us/library/bb546158.aspx
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-
 namespace Sanity.Linq.Internal;
 
 internal static class TypeSystem

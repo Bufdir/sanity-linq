@@ -13,8 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-
 namespace Sanity.Linq;
 
 public static class StringExtensions
@@ -26,6 +24,6 @@ public static class StringExtensions
         if (str.Length == 1) return str.ToLower();
 
         //Make first letter lowercase (i.e. camelCase)
-        return Char.ToLowerInvariant(str[0]) + str.Substring(1);
+        return char.ToLowerInvariant(str[0]) + str[1..];
     }
 }

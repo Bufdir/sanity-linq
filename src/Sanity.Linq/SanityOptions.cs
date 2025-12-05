@@ -14,8 +14,6 @@
 //  along with this program.
 
 
-using System;
-
 namespace Sanity.Linq;
 
 public class SanityOptions

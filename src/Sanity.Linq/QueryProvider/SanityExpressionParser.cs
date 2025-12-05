@@ -13,14 +13,8 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
-using Newtonsoft.Json;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.Internal;
 

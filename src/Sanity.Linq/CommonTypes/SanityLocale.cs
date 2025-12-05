@@ -15,12 +15,6 @@
 
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-
 namespace Sanity.Linq.CommonTypes;
 
 public class SanityLocale<T> : Dictionary<string, object>

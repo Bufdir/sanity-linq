@@ -13,10 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-
 namespace Sanity.Linq;
 
 public static class SanityDataContextExtensions

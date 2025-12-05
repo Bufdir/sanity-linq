@@ -13,9 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using Newtonsoft.Json;
-
 namespace Sanity.Linq.CommonTypes;
 
 public class SanityReference<T> : SanityObject where T : class
@@ -31,7 +28,5 @@ public class SanityReference<T> : SanityObject where T : class
     [JsonProperty("_weak")]
     public bool? Weak { get; set; }
 
-    [JsonIgnore]
-    public T? Value { get; set; }
-
+    [JsonIgnore] public T Value { get; set; } = null!;
 }

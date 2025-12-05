@@ -3,10 +3,6 @@
 // Source: https://github.com/samuelneff/MimeTypeMap/blob/master/src/MimeTypes/MimeTypeMap.cs
 // Repository: https://github.com/samuelneff/MimeTypeMap
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
 namespace Sanity.Linq.Internal;
 
 internal static class MimeTypeMap

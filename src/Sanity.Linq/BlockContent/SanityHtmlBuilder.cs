@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
-using Sanity.Linq.JsonConverters;
+﻿using Sanity.Linq.JsonConverters;
 
 namespace Sanity.Linq.BlockContent;
 

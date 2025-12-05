@@ -13,21 +13,15 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
 using System.Collections.Concurrent;
-using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Sanity.Linq.BlockContent;
 
 namespace Sanity.Linq;
-#nullable disable
 
 public static class SanityDocumentExtensions
 {
     /// <param name="document"></param>
-    extension(object document)
+    extension(object? document)
     {
         /// <summary>
         /// Determines if object is a Sanity draft document by inspecting the Id field.
@@ -46,14 +40,14 @@ public static class SanityDocumentExtensions
         }
 
         /// <summary>
-        /// Returns Type of a document using reflection to find a field which serializes to "_id"
+        /// Returns Type of document using reflection to find a field which serializes to "_id"
         /// </summary>
         /// <returns></returns>
-        public string SanityId()
+        public string? SanityId()
         {
             if (document == null) return null;
 
-            // Return Id using reflection (based on conventions)
+            // Return id using reflection (based on conventions)
             var idProperty = document.GetType().GetIdProperty();
             if (idProperty != null)
             {
@@ -64,11 +58,11 @@ public static class SanityDocumentExtensions
             return null;
         }
 
-        public void SetSanityId(string value)
+        public void SetSanityId(string? value)
         {
             if (document == null) return;
 
-            // Return Id using reflection (based on conventions)
+            // Return id using reflection (based on conventions)
             var idProperty = document.GetType().GetIdProperty();
             if (idProperty != null)
             {
@@ -77,10 +71,10 @@ public static class SanityDocumentExtensions
         }
 
         /// <summary>
-        /// Returns Type of a document using reflection to find a field which serializes to "_type"
+        /// Returns Type of document using reflection to find a field which serializes to "_type"
         /// </summary>
         /// <returns></returns>
-        public string SanityType()
+        public string? SanityType()
         {
             if (document == null) return null;
 
@@ -94,10 +88,10 @@ public static class SanityDocumentExtensions
         }
 
         /// <summary>
-        /// Returns Type of a document using reflection to find a field which serializes to "_rev"
+        /// Returns Type of document using reflection to find a field which serializes to "_rev"
         /// </summary>
         /// <returns></returns>
-        public string SanityRevision()
+        public string? SanityRevision()
         {
             if (document == null) return null;
 
@@ -116,12 +110,13 @@ public static class SanityDocumentExtensions
 
             // Return type using reflection (based on conventions)
             var revisionProperty = document.GetType().GetCreatedAtProperty();
-            if (revisionProperty != null)
+            if (revisionProperty == null)
             {
-                var val = revisionProperty.GetValue(document);
-                return Convert.ChangeType(val, typeof(DateTimeOffset)) as DateTimeOffset?;
+                return null;
             }
-            return null;
+
+            var val = revisionProperty.GetValue(document);
+            return Convert.ChangeType(val, typeof(DateTimeOffset)) as DateTimeOffset?;
         }
 
         public DateTimeOffset? SanityUpdatedAt()
@@ -130,12 +125,13 @@ public static class SanityDocumentExtensions
 
             // Return type using reflection (based on conventions)
             var revisionProperty = document.GetType().GetUpdatedAtProperty();
-            if (revisionProperty != null)
+            if (revisionProperty == null)
             {
-                var val = revisionProperty.GetValue(document);
-                return Convert.ChangeType(val, typeof(DateTimeOffset)) as DateTimeOffset?;
+                return null;
             }
-            return null;
+
+            var val = revisionProperty.GetValue(document);
+            return Convert.ChangeType(val, typeof(DateTimeOffset)) as DateTimeOffset?;
         }
 
         /// <summary>
@@ -165,8 +161,10 @@ public static class SanityDocumentExtensions
             return document?.GetType()?.GetRevisionProperty() != null;
         }
 
-        public object GetValue(string fieldName)
+        public object? GetValue(string fieldName)
         {
+            if (document == null) return null;
+
             var prop = document.GetType().GetProperty(fieldName);
             if (prop != null && prop.CanRead)
             {
@@ -180,106 +178,134 @@ public static class SanityDocumentExtensions
             return null;
         }
 
-        public T GetValue<T>(string fieldName)
+        public T? GetValue<T>(string fieldName)
         {
             var val = GetValue(document, fieldName);
-            if (val != null)
+            if (val == null)
             {
-                var converted = Convert.ChangeType(val, typeof(T));
-                if (converted != null)
-                {
-                    return (T)converted;
-                }
+                return default;
             }
-            return default(T);
+
+            var converted = Convert.ChangeType(val, typeof(T));
+            return (T)converted;
         }
     }
 
-    private static readonly ConcurrentDictionary<Type, PropertyInfo> CreatedAtPropertyCache = new();
-    private static readonly ConcurrentDictionary<Type, PropertyInfo> IdPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo?> CreatedAtPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo?> IdPropertyCache = new();
 
-    private static readonly ConcurrentDictionary<Type, PropertyInfo> RevPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo?> RevPropertyCache = new();
 
-    private static readonly ConcurrentDictionary<Type, PropertyInfo> TypePropertyCache = new();
-    private static readonly ConcurrentDictionary<Type, PropertyInfo> UpdatedAtPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo?> TypePropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo?> UpdatedAtPropertyCache = new();
 
     extension(Type type)
     {
-        private PropertyInfo GetCreatedAtProperty()
+        private PropertyInfo? GetCreatedAtProperty()
         {
-            if (!CreatedAtPropertyCache.ContainsKey(type))
+            if (CreatedAtPropertyCache.TryGetValue(type, out var property))
             {
-                var props = type.GetProperties();
-                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_createdAt", StringComparison.InvariantCultureIgnoreCase) ||
-                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_createdAt"));
-
-                CreatedAtPropertyCache[type] = revProperty;
+                return property;
             }
+
+            var props = type.GetProperties();
+            var revProperty = props.FirstOrDefault(p =>
+            {
+                if (p.Name.Equals("_createdAt", StringComparison.InvariantCultureIgnoreCase)) return true;
+                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
+                return attr is { PropertyName: "_createdAt" };
+            });
+
+            CreatedAtPropertyCache[type] = revProperty;
             return CreatedAtPropertyCache[type];
         }
 
-        private PropertyInfo GetIdProperty()
+        private PropertyInfo? GetIdProperty()
         {
-            if (!IdPropertyCache.ContainsKey(type))
+            if (IdPropertyCache.TryGetValue(type, out var property))
             {
-                var props = type.GetProperties();
-                var idProperty = props.FirstOrDefault(p => p.Name.Equals("_id", StringComparison.InvariantCultureIgnoreCase) ||
-                                                           (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_id"));
-                IdPropertyCache[type] = idProperty;
+                return property;
             }
+
+            var props = type.GetProperties();
+            var idProperty = props.FirstOrDefault(p =>
+            {
+                if (p.Name.Equals("_id", StringComparison.InvariantCultureIgnoreCase)) return true;
+                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
+                return attr is { PropertyName: "_id" };
+            });
+            IdPropertyCache[type] = idProperty;
             return IdPropertyCache[type];
         }
 
-        private PropertyInfo GetRevisionProperty()
+        private PropertyInfo? GetRevisionProperty()
         {
-            if (!RevPropertyCache.ContainsKey(type))
+            if (RevPropertyCache.TryGetValue(type, out var property))
             {
-                var props = type.GetProperties();
-                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_rev", StringComparison.InvariantCultureIgnoreCase) ||
-                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_rev"));
-
-                RevPropertyCache[type] = revProperty;
+                return property;
             }
+
+            var props = type.GetProperties();
+            var revProperty = props.FirstOrDefault(p =>
+            {
+                if (p.Name.Equals("_rev", StringComparison.InvariantCultureIgnoreCase)) return true;
+                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
+                return attr is { PropertyName: "_rev" };
+            });
+
+            RevPropertyCache[type] = revProperty;
             return RevPropertyCache[type];
         }
 
-        private PropertyInfo GetTypeProperty()
+        private PropertyInfo? GetTypeProperty()
         {
-            if (!TypePropertyCache.ContainsKey(type))
+            if (TypePropertyCache.TryGetValue(type, out var property))
             {
-                var props = type.GetProperties();
-                var typeProperty = props.FirstOrDefault(p => p.Name.Equals("_type", StringComparison.InvariantCultureIgnoreCase) ||
-                                                             (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_type"));
-
-                TypePropertyCache[type] = typeProperty;
+                return property;
             }
+
+            var props = type.GetProperties();
+            var typeProperty = props.FirstOrDefault(p =>
+            {
+                if (p.Name.Equals("_type", StringComparison.InvariantCultureIgnoreCase)) return true;
+                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
+                return attr is { PropertyName: "_type" };
+            });
+
+            TypePropertyCache[type] = typeProperty;
             return TypePropertyCache[type];
         }
 
-        private PropertyInfo GetUpdatedAtProperty()
+        private PropertyInfo? GetUpdatedAtProperty()
         {
-            if (!UpdatedAtPropertyCache.ContainsKey(type))
+            if (UpdatedAtPropertyCache.TryGetValue(type, out var property))
             {
-                var props = type.GetProperties();
-                var revProperty = props.FirstOrDefault(p => p.Name.Equals("_updatedAt", StringComparison.InvariantCultureIgnoreCase) ||
-                                                            (p.GetCustomAttribute<JsonPropertyAttribute>(true) != null && p.GetCustomAttribute<JsonPropertyAttribute>(true).PropertyName == "_updatedAt"));
-
-                UpdatedAtPropertyCache[type] = revProperty;
+                return property;
             }
+
+            var props = type.GetProperties();
+            var revProperty = props.FirstOrDefault(p =>
+            {
+                if (p.Name.Equals("_updatedAt", StringComparison.InvariantCultureIgnoreCase)) return true;
+                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
+                return attr is { PropertyName: "_updatedAt" };
+            });
+
+            UpdatedAtPropertyCache[type] = revProperty;
             return UpdatedAtPropertyCache[type];
         }
     }
 
-    extension(object blockContent)
+    extension(object? blockContent)
     {
         public Task<string> ToHtmlAsync(SanityHtmlBuilder builder)
         {
             return blockContent.ToHtmlAsync(builder, null);
         }
 
-        public Task<string> ToHtmlAsync(SanityHtmlBuilder builder, object buildContext = null)
+        public Task<string> ToHtmlAsync(SanityHtmlBuilder builder, object? buildContext = null)
         {
-            return builder.BuildAsync(blockContent, buildContext);
+            return builder.BuildAsync(blockContent!, buildContext);
         }
 
         public string ToHtml(SanityHtmlBuilder builder)
@@ -287,9 +313,9 @@ public static class SanityDocumentExtensions
             return blockContent.ToHtml(builder, null);
         }
 
-        public string ToHtml(SanityHtmlBuilder builder, object buildContext)
+        public string ToHtml(SanityHtmlBuilder builder, object? buildContext)
         {
-            return builder.BuildAsync(blockContent, buildContext).Result;
+            return builder.BuildAsync(blockContent!, buildContext).Result;
         }
 
         public Task<string> ToHtmlAsync(SanityDataContext context)
@@ -297,9 +323,9 @@ public static class SanityDocumentExtensions
             return blockContent.ToHtmlAsync(context, null);
         }
 
-        public Task<string> ToHtmlAsync(SanityDataContext context, object buildContext)
+        public Task<string> ToHtmlAsync(SanityDataContext context, object? buildContext)
         {
-            return context.HtmlBuilder.BuildAsync(blockContent, buildContext);
+            return context.HtmlBuilder.BuildAsync(blockContent!, buildContext);
         }
 
         public string ToHtml(SanityDataContext context)
@@ -307,9 +333,9 @@ public static class SanityDocumentExtensions
             return blockContent.ToHtml(context, null);
         }
 
-        public string ToHtml(SanityDataContext context, object buildContext)
+        public string ToHtml(SanityDataContext context, object? buildContext)
         {
-            return context.HtmlBuilder.BuildAsync(blockContent, buildContext).Result;
+            return context.HtmlBuilder.BuildAsync(blockContent!, buildContext).Result;
         }
     }
 }

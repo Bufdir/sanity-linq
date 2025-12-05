@@ -1,29 +1,25 @@
 ﻿// Reference: https://msdn.microsoft.com/en-us/library/bb546158.aspx
 
-using System;
-using System.Collections.Generic;
-using System.Linq.Expressions;
-
 namespace Sanity.Linq.Internal;
 
 internal static class Evaluator
 {
-    /// <summary> 
-    /// Performs evaluation & replacement of independent sub-trees 
-    /// </summary> 
+    /// <summary>
+    /// Performs evaluation & replacement of independent sub-trees
+    /// </summary>
     /// <param name="expression">The root of the expression tree.</param>
     /// <param name="fnCanBeEvaluated">A function that decides whether a given expression node can be part of the local function.</param>
-    /// <returns>A new tree with sub-trees evaluated and replaced.</returns> 
+    /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
     public static Expression PartialEval(Expression expression, Func<Expression, bool> fnCanBeEvaluated)
     {
         return new SubtreeEvaluator(new Nominator(fnCanBeEvaluated).Nominate(expression)).Eval(expression);
     }
 
-    /// <summary> 
-    /// Performs evaluation & replacement of independent sub-trees 
-    /// </summary> 
+    /// <summary>
+    /// Performs evaluation & replacement of independent sub-trees
+    /// </summary>
     /// <param name="expression">The root of the expression tree.</param>
-    /// <returns>A new tree with sub-trees evaluated and replaced.</returns> 
+    /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
     public static Expression PartialEval(Expression expression)
     {
         return PartialEval(expression, CanBeEvaluatedLocally);
@@ -34,21 +30,64 @@ internal static class Evaluator
         return expression.NodeType != ExpressionType.Parameter;
     }
 
-    /// <summary> 
-    /// Evaluates & replaces sub-trees when first candidate is reached (top-down) 
-    /// </summary> 
-    class SubtreeEvaluator : ExpressionVisitor
+    /// <summary>
+    /// Performs bottom-up analysis to determine which nodes can possibly
+    /// be part of an evaluated sub-tree.
+    /// </summary>
+    private class Nominator : ExpressionVisitor
     {
-        HashSet<Expression> candidates = [];
+        private readonly Func<Expression, bool> _fnCanBeEvaluated;
+        private HashSet<Expression> _candidates = [];
+        private bool _cannotBeEvaluated;
+
+        internal Nominator(Func<Expression, bool> fnCanBeEvaluated)
+        {
+            _fnCanBeEvaluated = fnCanBeEvaluated;
+        }
+
+        public override Expression? Visit(Expression? expression)
+        {
+            if (expression == null)
+            {
+                return expression;
+            }
+
+            var saveCannotBeEvaluated = _cannotBeEvaluated;
+            _cannotBeEvaluated = false;
+            base.Visit(expression);
+            if (!_cannotBeEvaluated)
+            {
+                if (_fnCanBeEvaluated(expression))
+                {
+                    _candidates.Add(expression);
+                }
+                else
+                {
+                    _cannotBeEvaluated = true;
+                }
+            }
+            _cannotBeEvaluated |= saveCannotBeEvaluated;
+            return expression;
+        }
+
+        internal HashSet<Expression> Nominate(Expression expression)
+        {
+            _candidates = [];
+            Visit(expression);
+            return _candidates;
+        }
+    }
+
+    /// <summary>
+    /// Evaluates & replaces sub-trees when first candidate is reached (top-down)
+    /// </summary>
+    private class SubtreeEvaluator : ExpressionVisitor
+    {
+        private readonly HashSet<Expression> _candidates;
 
         internal SubtreeEvaluator(HashSet<Expression> candidates)
         {
-            this.candidates = candidates;
-        }
-
-        internal Expression Eval(Expression exp)
-        {
-            return Visit(exp)!;
+            _candidates = candidates;
         }
 
         public override Expression? Visit(Expression? exp)
@@ -57,14 +96,19 @@ internal static class Evaluator
             {
                 return exp;
             }
-            if (candidates.Contains(exp))
+            if (_candidates.Contains(exp))
             {
                 return Evaluate(exp);
             }
             return base.Visit(exp);
         }
 
-        private Expression Evaluate(Expression e)
+        internal Expression Eval(Expression exp)
+        {
+            return Visit(exp)!;
+        }
+
+        private static Expression Evaluate(Expression e)
         {
             if (e.NodeType == ExpressionType.Constant)
             {
@@ -73,52 +117,6 @@ internal static class Evaluator
             var lambda = Expression.Lambda(e);
             var fn = lambda.Compile();
             return Expression.Constant(fn.DynamicInvoke(null), e.Type);
-        }
-    }
-
-    /// <summary> 
-    /// Performs bottom-up analysis to determine which nodes can possibly 
-    /// be part of an evaluated sub-tree. 
-    /// </summary> 
-    class Nominator : ExpressionVisitor
-    {
-        Func<Expression, bool> fnCanBeEvaluated;
-        HashSet<Expression> candidates = [];
-        bool cannotBeEvaluated;
-
-        internal Nominator(Func<Expression, bool> fnCanBeEvaluated)
-        {
-            this.fnCanBeEvaluated = fnCanBeEvaluated;
-        }
-
-        internal HashSet<Expression> Nominate(Expression expression)
-        {
-            candidates = [];
-            Visit(expression);
-            return candidates;
-        }
-
-        public override Expression? Visit(Expression? expression)
-        {
-            if (expression != null)
-            {
-                var saveCannotBeEvaluated = cannotBeEvaluated;
-                cannotBeEvaluated = false;
-                base.Visit(expression);
-                if (!cannotBeEvaluated)
-                {
-                    if (fnCanBeEvaluated(expression))
-                    {
-                        candidates.Add(expression);
-                    }
-                    else
-                    {
-                        cannotBeEvaluated = true;
-                    }
-                }
-                cannotBeEvaluated |= saveCannotBeEvaluated;
-            }
-            return expression;
         }
     }
 }

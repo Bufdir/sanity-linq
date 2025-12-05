@@ -10,7 +10,6 @@ ignore:
   sha: []
 continuous-delivery-fallback-tag: ''
 commit-message-incrementing: Enabled
-conventional-commits: true
 tag-pre-release-weight: 0
 assembly-versioning-scheme: MajorMinorPatch
 assembly-file-versioning-scheme: MajorMinorPatch

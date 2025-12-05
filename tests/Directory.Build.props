@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <!-- Enable coverage by default for all test projects under tests/; can be overridden on the CLI -->
+    <CollectCoverage Condition="'$(CollectCoverage)' == ''">true</CollectCoverage>
+    <CoverletOutputFormat Condition="'$(CoverletOutputFormat)' == ''">cobertura</CoverletOutputFormat>
+
+    <!-- Coverage thresholds: two values (line;branch) -->
+    <Threshold Condition="'$(Threshold)' == ''">80;70</Threshold>
+    <ThresholdType Condition="'$(ThresholdType)' == ''">line;branch</ThresholdType>
+    <ThresholdStat Condition="'$(ThresholdStat)' == ''">total;total</ThresholdStat>
+  </PropertyGroup>
+</Project>

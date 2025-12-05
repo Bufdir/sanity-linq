@@ -28,13 +28,9 @@ jobs:
         run: dotnet build sanity-linq.sln -c Release --no-restore
 
       - name: Test with coverage and thresholds
-        run: >
+        run: |
+          # MSBuild defaults (coverage + thresholds) are set in Directory.Build.props under tests/
           dotnet test sanity-linq.sln --configuration Release --no-build
-          -p:CollectCoverage=true
-          -p:CoverletOutputFormat=cobertura
-          -p:Threshold='80;70'
-          -p:ThresholdType='line;branch'
-          -p:ThresholdStat='total;total'
 
       - name: Publish coverage artifact
         if: always()

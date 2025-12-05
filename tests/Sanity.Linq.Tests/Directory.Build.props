@@ -1,13 +1,4 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project>
-  <PropertyGroup>
-    <!-- Enable coverage by default for this test project; can be overridden on the CLI -->
-    <CollectCoverage Condition="'$(CollectCoverage)' == ''">true</CollectCoverage>
-    <CoverletOutputFormat Condition="'$(CoverletOutputFormat)' == ''">cobertura</CoverletOutputFormat>
-
-    <!-- Coverage thresholds: two values (line;branch) -->
-    <Threshold Condition="'$(Threshold)' == ''">80;70</Threshold>
-    <ThresholdType Condition="'$(ThresholdType)' == ''">line;branch</ThresholdType>
-    <ThresholdStat Condition="'$(ThresholdStat)' == ''">total;total</ThresholdStat>
-  </PropertyGroup>
+  <!-- Intentionally empty: settings centralized in tests/Directory.Build.props -->
 </Project>

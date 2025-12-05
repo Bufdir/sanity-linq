@@ -1,4 +1,4 @@
-﻿mode: MainLine
+﻿mode: Mainline
 tagPrefix: 'v'
 branches:
   main:

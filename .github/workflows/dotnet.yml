@@ -34,7 +34,7 @@ jobs:
       - name: Generate coverage report
         uses: danielpalme/ReportGenerator-GitHub-Action@5
         with:
-          reports: 'tests/**/coverage.cobertura.xml'
+          reports: 'tests/**/TestResults/**/coverage.cobertura.xml'
           targetdir: 'coverage-report'
           reporttypes: 'Html;Cobertura'
 

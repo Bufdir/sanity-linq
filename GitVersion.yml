@@ -1,0 +1,19 @@
+﻿mode: Mainline
+branches:
+  main:
+    regex: ^main$
+    is-mainline: true
+  master:
+    regex: ^master$
+    is-mainline: true
+ignore:
+  sha: []
+continuous-delivery-fallback-tag: ''
+commit-message-incrementing: Enabled
+conventional-commits: true
+tag-pre-release-weight: 0
+assembly-versioning-scheme: MajorMinorPatch
+assembly-file-versioning-scheme: MajorMinorPatch
+major-version-bump-message: (BREAKING CHANGE|!):
+minor-version-bump-message: (feat)(\(.+\))?:
+patch-version-bump-message: (fix|perf|refactor|test|build|ci|chore|revert)(\(.+\))?:

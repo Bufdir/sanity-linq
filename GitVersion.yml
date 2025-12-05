@@ -13,6 +13,6 @@ commit-message-incrementing: Enabled
 tag-pre-release-weight: 0
 assembly-versioning-scheme: MajorMinorPatch
 assembly-file-versioning-scheme: MajorMinorPatch
-major-version-bump-message: "(BREAKING CHANGE|!):"
-minor-version-bump-message: "(feat)(\(.+\))?:"
-patch-version-bump-message: "(fix|perf|refactor|test|build|ci|chore|revert)(\(.+\))?:"
+major-version-bump-message: '(BREAKING CHANGE|!):'
+minor-version-bump-message: '(feat)(\(.+\))?[:]'
+patch-version-bump-message: '(fix|perf|refactor|test|build|ci|chore|revert)(\(.+\))?[:]'

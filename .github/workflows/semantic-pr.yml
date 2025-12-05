@@ -16,6 +16,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # Validate both PR title and commit messages (useful with squash merges)
+          titleAndCommits: true
           types: |
             feat
             fix
@@ -38,5 +40,12 @@ jobs:
             ci
           requireScope: false
           wip: false
+          # Any non-empty subject is allowed; type/scope are validated by the action
           subjectPattern: ^.+$
-          subjectPatternError: "PR title must not be empty"
+          # Friendlier guidance when the subject fails its own regex (rare)
+          subjectPatternError: "PR title must follow Conventional Commits, e.g. 'feat: add X', 'fix(api): correct Y'. Use lowercase type, optional scope in parentheses, then colon and a short subject."
+          # Labels that allow maintainers to bypass the check when needed
+          ignoreLabels: |
+            maintenance
+            skip-semantic
+            docs-only

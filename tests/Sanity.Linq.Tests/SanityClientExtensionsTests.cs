@@ -446,7 +446,7 @@ public class SanityClientExtensionsTests
         public void Dispose()
         {
             try { _cts?.Cancel(); } catch { }
-            try { _listener?.Stop(); } catch { }
+            try { _listener?.Stop(); } catch (Exception ex) { Console.Error.WriteLine($"MinimalHttpServer.Dispose: Failed to stop listener: {ex}"); }
             _cts?.Dispose();
         }
     }

@@ -19,9 +19,20 @@ public class SanityCreateMutation : SanityMutation
 {
     public SanityCreateMutation(object document)
     {            
-        if (document == null) throw new ArgumentNullException(nameof(document));
-        if (!document.HasIdProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
-        if (!document.HasDocumentTypeProperty()) throw new ArgumentException("Document must have an Type field which is represented as '_type' when serialized to JSON.", nameof(document));
+        if (document == null)
+        {
+            throw new ArgumentNullException(nameof(document));
+        }
+
+        if (!document.HasIdProperty())
+        {
+            throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
+        }
+
+        if (!document.HasDocumentTypeProperty())
+        {
+            throw new ArgumentException("Document must have an Type field which is represented as '_type' when serialized to JSON.", nameof(document));
+        }
 
         Create = document;
     }

@@ -17,6 +17,7 @@ namespace Sanity.Linq.Mutations.Model;
 
 public class SanityPatch
 {
+    // ReSharper disable once InconsistentNaming
     public string? IfRevisionID { get; set; }
 
     public object? Set { get; set; }

@@ -39,11 +39,11 @@ public class SanityReferenceTypeConverter : JsonConverter
         }
 
         var res = Activator.CreateInstance(type);
-        var refProp = type.GetProperty(nameof(SanityReference<object>.Ref));
-        var typeProp = type.GetProperty(nameof(SanityReference<object>.SanityType));
-        var keyProp = type.GetProperty(nameof(SanityReference<object>.SanityKey));
-        var weakProp = type.GetProperty(nameof(SanityReference<object>.Weak));
-        var valueProp = type.GetProperty(nameof(SanityReference<object>.Value));
+        var refProp = type.GetProperty(nameof(SanityReference<>.Ref));
+        var typeProp = type.GetProperty(nameof(SanityReference<>.SanityType));
+        var keyProp = type.GetProperty(nameof(SanityReference<>.SanityKey));
+        var weakProp = type.GetProperty(nameof(SanityReference<>.Weak));
+        var valueProp = type.GetProperty(nameof(SanityReference<>.Value));
 
         if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
         if (typeProp != null) typeProp.SetValue(res, "reference");

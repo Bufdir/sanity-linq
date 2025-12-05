@@ -213,7 +213,7 @@ public sealed class SanityMutationBuilder<TDoc>(SanityMutationBuilder innerBuild
 
 public class SanityMutationBuilder(SanityClient client)
 {
-    public object Lock = new();
+    private readonly object _lock = new();
 
     private SanityMutationBuilder() : this(null!)
     {
@@ -240,7 +240,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder Create(object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityCreateMutation(document));
             return this;
@@ -249,7 +249,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder CreateIfNotExists(object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityCreateIfNotExistsMutation(document));
             return this;
@@ -258,7 +258,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder CreateOrReplace(object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityCreateOrReplaceMutation(document));
             return this;
@@ -267,7 +267,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder DeleteById(string id)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityDeleteByIdMutation(id));
             return this;
@@ -284,7 +284,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder DeleteByQuery(string query)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityDeleteByQueryMutation(query));
             return this;
@@ -296,11 +296,11 @@ public class SanityMutationBuilder(SanityClient client)
         return new SanityMutationBuilder<TDoc>(this);
     }
 
-    public object GetLock() => Lock;
+    public object GetLock() => _lock;
 
     public SanityMutationBuilder PatchById(SanityPatchById patch)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityPatchMutation(patch));
             return this;
@@ -336,7 +336,7 @@ public class SanityMutationBuilder(SanityClient client)
 
     public SanityMutationBuilder PatchByQuery(SanityPatchByQuery patch)
     {
-        lock (Lock)
+        lock (_lock)
         {
             Mutations.Add(new SanityPatchMutation(patch));
             return this;
@@ -384,7 +384,7 @@ public class SanityMutationBuilder(SanityClient client)
     /// <returns></returns>
     public SanityMutationBuilder SetValues(object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             if (document == null)
             {
@@ -407,7 +407,7 @@ public class SanityMutationBuilder(SanityClient client)
     /// <returns></returns>
     public SanityMutationBuilder SetValues(string id, object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             if (document == null)
             {
@@ -428,7 +428,7 @@ public class SanityMutationBuilder(SanityClient client)
     /// <returns></returns>
     public SanityMutationBuilder Update(object document)
     {
-        lock (Lock)
+        lock (_lock)
         {
             if (document == null)
             {

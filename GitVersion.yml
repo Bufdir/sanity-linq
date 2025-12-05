@@ -3,23 +3,18 @@ tagPrefix: 'v'
 branches:
   main:
     regex: ^main$
-    isMainline: true
   master:
     regex: ^master$
-    isMainline: true
   develop:
     regex: ^develop$
     label: beta
-    isMainline: false
   feature:
     regex: ^features?[/-]
     label: alpha
-    isMainline: false
   release:
     regex: ^releases?[/-]
     label: rc
     isReleaseBranch: true
-    isMainline: false
 ignore:
   sha: []
 continuousDeliveryFallbackTag: ''

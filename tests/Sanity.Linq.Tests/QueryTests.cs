@@ -137,6 +137,7 @@ public class QueryTests : TestBase
         // Create post
         var post = new Post
         {
+            Id = Guid.NewGuid().ToString(),
             Title = "Welcome to Oslofjord Convention Center!",
             PublishedAt = DateTimeOffset.Now,
             Categories =
@@ -223,8 +224,14 @@ public class QueryTests : TestBase
 
         await sanity.DocumentSet<Post>().Update(postToUpdate).CommitAsync();
 
-        var updatedItem = await sanity.DocumentSet<Post>().GetAsync(postToUpdate.Id!);
+        Post? updatedItem = null;
+        await WaitUntilAsync(async () =>
+        {
+            updatedItem = await sanity.DocumentSet<Post>().GetAsync(postToUpdate.Id!);
+            return updatedItem != null && updatedItem.Title == "New title";
+        }, maxRetries: 60, delayMs: 500);
 
-        Assert.True(updatedItem.Title == "New title");
+        Assert.NotNull(updatedItem);
+        Assert.True(updatedItem!.Title == "New title");
     }
 }

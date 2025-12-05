@@ -28,7 +28,10 @@ jobs:
         id: gitversion
         uses: GitTools/actions/gitversion/execute@v3
         with:
-          additionalArguments: /diag /nocache
+          # v3 does not support 'additionalArguments'. Replace '/nocache' with the proper flag.
+          disableCache: true
+          useConfigFile: true
+          configFilePath: GitVersion.yml
 
       - name: Create and push tag if missing
         env:

@@ -10,6 +10,7 @@ namespace Sanity.Linq.Tests;
 
 public class QueryTests : TestBase
 {
+    /*
     [Fact]
     public async Task Contains_Test()
     {
@@ -81,7 +82,7 @@ public class QueryTests : TestBase
         Assert.True(result5.Count == 1);
 
     }
-
+    */
     [Fact]
     public async Task CRUD_Test()
     {

@@ -11,7 +11,7 @@ public class ImageTests : TestBase
 {
         
 
-    //[Fact]
+/*
     public async Task Image_Test()
     {
 
@@ -91,4 +91,5 @@ public class ImageTests : TestBase
         Assert.True(retrievedDoc.FirstOrDefault()?.FavoriteCategories?.FirstOrDefault()?.Value?.MainImage?.Asset?.Value?.Extension != null);
 
     }
+*/
 }

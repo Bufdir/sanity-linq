@@ -13,25 +13,32 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-
-using System;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
-public class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
+public sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
 {
-    private object _queryBuilderLock = new();
-    public Type DocType { get; } = docType;
+    private readonly object _queryBuilderLock = new();
     public SanityDataContext Context { get; } = context;
-
+    public Type DocType { get; } = docType;
     public int MaxNestingLevel { get; } = maxNestingLevel;
 
+    /// <summary>
+    /// Constructs an <see cref="IQueryable"/> object that can evaluate the query represented by the specified expression tree.
+    /// </summary>
+    /// <param name="expression">
+    /// An <see cref="Expression"/> that represents the LINQ query to be evaluated.
+    /// </param>
+    /// <returns>
+    /// An <see cref="IQueryable"/> that can evaluate the query represented by the specified expression tree.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the queryable instance cannot be created.
+    /// </exception>
+    /// <exception cref="TargetInvocationException">
+    /// Thrown when there is an error during the creation of the queryable instance.
+    /// </exception>
     public IQueryable CreateQuery(Expression expression)
     {
         var elementType = TypeSystem.GetElementType(expression.Type);
@@ -46,7 +53,24 @@ public class SanityQueryProvider(Type docType, SanityDataContext context, int ma
         }
     }
 
-    // Queryable's collection-returning standard query operators call this method. 
+    /// <summary>
+    /// Constructs an <see cref="IQueryable{T}"/> object that can evaluate the query represented by the specified expression tree.
+    /// </summary>
+    /// <typeparam name="TElement">
+    /// The type of the elements in the resulting <see cref="IQueryable{T}"/>.
+    /// </typeparam>
+    /// <param name="expression">
+    /// An <see cref="Expression"/> that represents the LINQ query to be evaluated.
+    /// </param>
+    /// <returns>
+    /// An <see cref="IQueryable{T}"/> that can evaluate the query represented by the specified expression tree.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the queryable instance cannot be created.
+    /// </exception>
+    /// <exception cref="TargetInvocationException">
+    /// Thrown when there is an error during the creation of the queryable instance.
+    /// </exception>
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
     {
         return new SanityDocumentSet<TElement>(this, expression);
@@ -57,28 +81,70 @@ public class SanityQueryProvider(Type docType, SanityDataContext context, int ma
         return Execute<object>(expression);
     }
 
-    // Queryable's "single value" standard query operators call this method.
+    /// <summary>
+    /// Executes the query represented by the specified expression tree and returns the result.
+    /// </summary>
+    /// <typeparam name="TResult">
+    /// The type of the result expected from the execution of the query.
+    /// </typeparam>
+    /// <param name="expression">
+    /// An <see cref="Expression"/> that represents the LINQ query to be executed.
+    /// </param>
+    /// <returns>
+    /// The result of executing the query represented by the specified expression tree.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the query cannot be executed.
+    /// </exception>
+    /// <exception cref="AggregateException">
+    /// Thrown when an exception occurs during the execution of the query.
+    /// </exception>
     public TResult Execute<TResult>(Expression expression)
     {
-        return ExecuteAsync<TResult>(expression).Result;            
+        return ExecuteAsync<TResult>(expression).Result;
     }
 
-    public string GetSanityQuery<TResult>(Expression expression)
-    {
-        var parser = new SanityExpressionParser(expression, DocType, MaxNestingLevel, typeof(TResult));
-        return parser.BuildQuery();
-    }
-
+    /// <summary>
+    /// Asynchronously executes the specified query expression and returns the result.
+    /// </summary>
+    /// <typeparam name="TResult">The type of the result expected from the query execution.</typeparam>
+    /// <param name="expression">The LINQ expression representing the query to be executed.</param>
+    /// <param name="cancellationToken">
+    /// A <see cref="CancellationToken"/> that can be used to cancel the asynchronous operation.
+    /// </param>
+    /// <returns>
+    /// A task that represents the asynchronous operation. The task result contains the query result of type <typeparamref name="TResult"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">Thrown if the <paramref name="expression"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown if the query execution fails.</exception>
     public async Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
     {
-        var query = GetSanityQuery<TResult>(expression);          
+        var query = GetSanityQuery<TResult>(expression);
 
         // Execute query
         var result = await Context.Client.FetchAsync<TResult>(query, null, cancellationToken).ConfigureAwait(false);
 
         return result.Result;
-
     }
 
-      
+    /// <summary>
+    /// Generates a Sanity query string based on the specified LINQ expression.
+    /// </summary>
+    /// <typeparam name="TResult">
+    /// The type of the result expected from the query.
+    /// </typeparam>
+    /// <param name="expression">
+    /// An <see cref="Expression"/> representing the LINQ query to be translated into a Sanity query string.
+    /// </param>
+    /// <returns>
+    /// A <see cref="string"/> containing the Sanity query.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the query cannot be parsed or translated into a valid Sanity query.
+    /// </exception>
+    public string GetSanityQuery<TResult>(Expression expression)
+    {
+        var parser = new SanityExpressionParser(expression, DocType, MaxNestingLevel, typeof(TResult));
+        return parser.BuildQuery();
+    }
 }

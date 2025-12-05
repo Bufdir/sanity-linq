@@ -1,9 +1,4 @@
-﻿using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-
-namespace Sanity.Linq.BlockContent;
+﻿namespace Sanity.Linq.BlockContent;
 
 public class SanityHtmlSerializers
 {

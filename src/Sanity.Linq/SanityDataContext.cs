@@ -14,14 +14,7 @@
 //  along with this program.
 
 
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 using Sanity.Linq.BlockContent;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
@@ -153,6 +146,7 @@ public class SanityDataContext
     /// <param name="returnIds"></param>
     /// <param name="returnDocuments"></param>
     /// <param name="visibility"></param>
+    /// <param name="cancellationToken"></param>
     /// <returns></returns>
     public async Task<SanityMutationResponse<TDoc>> CommitAsync<TDoc>(bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
     {

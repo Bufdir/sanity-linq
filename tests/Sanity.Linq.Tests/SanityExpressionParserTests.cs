@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Xunit;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.QueryProvider;
+using Xunit;
 
 namespace Sanity.Linq.Tests;
 

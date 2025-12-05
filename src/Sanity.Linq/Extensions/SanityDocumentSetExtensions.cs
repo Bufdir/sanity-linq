@@ -13,13 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;
-using System.Threading.Tasks;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
 using Sanity.Linq.Enums;
@@ -36,192 +29,145 @@ public static class SanityDocumentSetExtensions
     extension<T>(IQueryable<T> source)
     {
         /// <summary>
-        /// Returns Sanity GROQ query for the expression. 
+        /// Returns Sanity GROQ query for the expression.
         /// </summary>
         /// <returns></returns>
         public string GetSanityQuery()
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> { Provider: SanityQueryProvider provider })
-            {
-                return provider.GetSanityQuery<T>(source.Expression);
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> { Provider: SanityQueryProvider provider } => provider.GetSanityQuery<T>(
+                    source.Expression),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return (await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false)).ToList();
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false))
+                    .ToList(),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<T[]> ToArrayAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return (await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false)).ToArray();
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false))
+                    .ToArray(),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<T> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return (await dbSet.Take(1).ExecuteSingleAsync(cancellationToken).ConfigureAwait(false));
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.Take(1)
+                    .ExecuteSingleAsync(cancellationToken)
+                    .ConfigureAwait(false)),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<IEnumerable<T>> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => await dbSet.ExecuteAsync(cancellationToken).ConfigureAwait(false),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<T> ExecuteSingleAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return await dbSet.ExecuteSingleAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => await dbSet.ExecuteSingleAsync(cancellationToken).ConfigureAwait(false),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<int> CountAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return (await dbSet.ExecuteCountAsync(cancellationToken).ConfigureAwait(false));
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteCountAsync(cancellationToken).ConfigureAwait(false)),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public async Task<long> LongCountAsync(CancellationToken cancellationToken = default)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return (await dbSet.ExecuteLongCountAsync(cancellationToken).ConfigureAwait(false));
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteLongCountAsync(cancellationToken)
+                    .ConfigureAwait(false)),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public IQueryable<T> Include<TProperty>(Expression<Func<T, TProperty>> property)
         {
-            if (source == null)
+            switch (source)
             {
-                throw new ArgumentNullException(nameof(source));
-            }
+                case null:
+                    throw new ArgumentNullException(nameof(source));
+                case SanityDocumentSet<T> dbSet:
+                    dbSet.Include(property);
+                    return dbSet;
 
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                dbSet.Include(property);
-                return dbSet;
+                default:
+                    throw new Exception("Queryable source must be a SanityDbSet<T>.");
             }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
         }
 
         public IQueryable<T> Include<TProperty>(Expression<Func<T, TProperty>> property, string sourceName)
         {
-            if (source == null)
+            switch (source)
             {
-                throw new ArgumentNullException(nameof(source));
-            }
+                case null:
+                    throw new ArgumentNullException(nameof(source));
+                case SanityDocumentSet<T> dbSet:
+                    dbSet.Include(property, sourceName);
+                    return dbSet;
 
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                dbSet.Include(property, sourceName);
-                return dbSet;
+                default:
+                    throw new Exception("Queryable source must be a SanityDbSet<T>.");
             }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
         }
 
         public SanityMutationBuilder<T> Patch(Action<SanityPatch> patch)
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return dbSet.Mutations.PatchByQuery(dbSet.Expression, patch);
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => dbSet.Mutations.PatchByQuery(dbSet.Expression, patch),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
 
         public SanityMutationBuilder<T> Delete()
         {
-            if (source == null)
+            return source switch
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (source is SanityDocumentSet<T> dbSet)
-            {
-                return dbSet.Mutations.DeleteByQuery(dbSet.Expression);
-            }
-
-            throw new Exception("Queryable source must be a SanityDbSet<T>.");
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => dbSet.Mutations.DeleteByQuery(dbSet.Expression),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
         }
     }
-
 
     /// <param name="docs"></param>
     /// <typeparam name="TDoc"></typeparam>
@@ -252,8 +198,8 @@ public static class SanityDocumentSetExtensions
             return docs.Mutations.DeleteById(id);
         }
 
-        public SanityMutationBuilder<TDoc> DeleteByQuery(Expression<Func<TDoc,bool>> query)
-        {            
+        public SanityMutationBuilder<TDoc> DeleteByQuery(Expression<Func<TDoc, bool>> query)
+        {
             return docs.Mutations.DeleteByQuery(query);
         }
 
@@ -287,17 +233,6 @@ public static class SanityDocumentSetExtensions
             return docs.Context.CommitAsync<TDoc>(returnIds, returnDocuments, visibility, cancellationToken);
         }
     }
-
-    //public static SanityTransactionBuilder<TDoc> PatchById<TDoc>(this SanityDocumentSet<TDoc> docs, string id, object patch)
-    //{
-    //    return docs.Mutations.PatchById(id, patch);
-    //}
-
-    //public static SanityTransactionBuilder<TDoc> PatchByQuery<TDoc>(this SanityDocumentSet<TDoc> docs, Expression<Func<TDoc,bool>> query, object patch)
-    //{
-    //    return docs.Mutations.PatchByQuery(query, patch);
-    //}
-
 
     extension(SanityDocumentSet<SanityImageAsset> images)
     {

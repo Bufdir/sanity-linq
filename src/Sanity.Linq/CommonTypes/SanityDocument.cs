@@ -13,9 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using Newtonsoft.Json;
-
 namespace Sanity.Linq.CommonTypes;
 
 public class SanityDocument

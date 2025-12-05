@@ -13,8 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Linq.Expressions;
 using Sanity.Linq.QueryProvider;
 
 namespace Sanity.Linq.Mutations.Model;

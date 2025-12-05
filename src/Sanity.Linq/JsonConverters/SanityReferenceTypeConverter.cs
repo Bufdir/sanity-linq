@@ -13,11 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.IO;
-using System.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Sanity.Linq.CommonTypes;
 
 namespace Sanity.Linq.JsonConverters;

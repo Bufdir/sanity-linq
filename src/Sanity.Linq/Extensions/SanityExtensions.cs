@@ -13,7 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
 using Sanity.Linq.CommonTypes;
 
 namespace Sanity.Linq;
@@ -21,7 +20,7 @@ namespace Sanity.Linq;
 public static class SanityExtensions
 {
     /// <summary>
-    /// Used to retreived sanity type name from a class name by convention.
+    /// Used to retrieved sanity type name from a class name by convention.
     /// </summary>
     /// <param name="type"></param>
     /// <returns></returns>

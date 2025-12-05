@@ -13,13 +13,7 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;
-using System.Threading.Tasks;
 using Sanity.Linq.Internal;
 using Sanity.Linq.Mutations;
 using Sanity.Linq.QueryProvider;

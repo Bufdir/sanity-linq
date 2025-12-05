@@ -13,11 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
 using Sanity.Linq.Enums;
@@ -47,7 +42,9 @@ public static class SanityClientExtensions
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
 
-            await using var fs = await HttpClient.GetStreamAsync(imageUrl).ConfigureAwait(false);
+            using var response = await HttpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await using var fs = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             var result = await client.UploadImageAsync(fs, fileName, mimeType, label ?? "Source:" + imageUrl.OriginalString, cancellationToken).ConfigureAwait(false);
             fs.Close();
             return result;
@@ -68,7 +65,9 @@ public static class SanityClientExtensions
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
 
-            await using var fs = await HttpClient.GetStreamAsync(fileUrl).ConfigureAwait(false);
+            using var response = await HttpClient.GetAsync(fileUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await using var fs = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             var result = await client.UploadFileAsync(fs, fileName, mimeType, label ?? "Source:" + fileUrl.OriginalString, cancellationToken).ConfigureAwait(false);
             fs.Close();
             return result;

@@ -17,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup GitVersion
         uses: GitTools/actions/gitversion/setup@v0
@@ -26,6 +27,8 @@ jobs:
       - name: Calculate version
         id: gitversion
         uses: GitTools/actions/gitversion/execute@v0
+        with:
+          additionalArguments: /diag /nocache
 
       - name: Create and push tag if missing
         env:

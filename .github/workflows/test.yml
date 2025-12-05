@@ -1,0 +1,46 @@
+﻿name: Tests and Coverage
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            9.0.x
+            8.0.x
+
+      - name: Restore
+        run: dotnet restore sanity-linq.sln
+
+      - name: Build (Release)
+        run: dotnet build sanity-linq.sln -c Release --no-restore
+
+      - name: Test with coverage and thresholds
+        run: >
+          dotnet test sanity-linq.sln --configuration Release --no-build
+          -p:CollectCoverage=true
+          -p:CoverletOutputFormat=cobertura
+          -p:Threshold='80;70'
+          -p:ThresholdType='line;branch'
+          -p:ThresholdStat='total;total'
+
+      - name: Publish coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: |
+            **/coverage.cobertura.xml
+            coverage.cobertura.xml

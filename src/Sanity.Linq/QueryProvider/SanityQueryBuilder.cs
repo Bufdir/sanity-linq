@@ -1,5 +1,4 @@
-﻿using System.Text.RegularExpressions;
-using Sanity.Linq.CommonTypes;
+﻿using Sanity.Linq.CommonTypes;
 
 namespace Sanity.Linq.QueryProvider;
 
@@ -550,9 +549,10 @@ internal sealed class SanityQueryBuilder
             return projection;
         }
 
-        foreach (var includeKey in Includes.Keys.OrderBy(k => k))
+        // Use the includes provided via parameter, not the instance field
+        foreach (var includeKey in includes.Keys.OrderBy(k => k))
         {
-            var jsonInclude = GroqToJson($"{{{Includes[includeKey]}}}");
+            var jsonInclude = GroqToJson($"{{{includes[includeKey]}}}");
             if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude)
             {
                 continue;

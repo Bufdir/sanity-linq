@@ -13,8 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System.Net;
-
 namespace Sanity.Linq.Exceptions;
 
 public class SanityHttpException : Exception

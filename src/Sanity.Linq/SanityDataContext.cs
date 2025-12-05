@@ -13,8 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-
-using System.Collections.Concurrent;
 using Sanity.Linq.BlockContent;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
@@ -30,20 +28,8 @@ namespace Sanity.Linq;
 /// </summary>
 public class SanityDataContext
 {
-
-    private readonly object _dsLock = new();
     private readonly ConcurrentDictionary<string, SanityDocumentSet> _documentSets = new();
-
-    internal bool IsShared { get; }
-
-    public SanityClient Client { get; }
-
-    public SanityMutationBuilder Mutations { get; }
-
-    public JsonSerializerSettings SerializerSettings { get; }
-    public JsonSerializerSettings DeserializerSettings { get; }
-
-    public SanityHtmlBuilder HtmlBuilder { get; set; }
+    private readonly object _dsLock = new();
 
     /// <summary>
     /// Create a new SanityDbContext using the specified options.
@@ -52,7 +38,7 @@ public class SanityDataContext
     /// <param name="serializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
-    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null) : this (options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory) { }
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory) { }
 
     /// <summary>
     /// Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
@@ -91,34 +77,17 @@ public class SanityDataContext
     internal SanityDataContext(SanityOptions options, bool isShared) : this(options, serializerSettings: null, deserializerSettings: null, htmlBuilderOptions: null, clientFactory: null)
     {
         IsShared = isShared;
-    }             
-
-    /// <summary>
-    /// Returns an IQueryable document set for specified type
-    /// </summary>
-    /// <typeparam name="TDoc"></typeparam>
-    /// <returns></returns>
-    public virtual SanityDocumentSet<TDoc> DocumentSet<TDoc>(int maxNestingLevel = 7)
-    {
-        var key = $"{typeof(TDoc).FullName ?? ""}_{maxNestingLevel}";
-        lock (_dsLock)
-        {
-            if (!_documentSets.ContainsKey(key))
-            {
-                _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
-            }
-        }
-        lock (_dsLock)
-        {
-            return (_documentSets[key] as SanityDocumentSet<TDoc>)!;
-        }
     }
 
-    public virtual SanityDocumentSet<SanityImageAsset> Images => DocumentSet<SanityImageAsset>(2);
-
-    public virtual SanityDocumentSet<SanityFileAsset> Files => DocumentSet<SanityFileAsset>(2);
-
+    public SanityClient Client { get; }
+    public JsonSerializerSettings DeserializerSettings { get; }
     public virtual SanityDocumentSet<SanityDocument> Documents => DocumentSet<SanityDocument>(2);
+    public virtual SanityDocumentSet<SanityFileAsset> Files => DocumentSet<SanityFileAsset>(2);
+    public SanityHtmlBuilder HtmlBuilder { get; set; }
+    public virtual SanityDocumentSet<SanityImageAsset> Images => DocumentSet<SanityImageAsset>(2);
+    public SanityMutationBuilder Mutations { get; }
+    public JsonSerializerSettings SerializerSettings { get; }
+    internal bool IsShared { get; }
 
     public virtual void ClearChanges()
     {
@@ -160,4 +129,24 @@ public class SanityDataContext
         throw new Exception($"No pending changes for document type {typeof(TDoc)}");
     }
 
+    /// <summary>
+    /// Returns an IQueryable document set for specified type
+    /// </summary>
+    /// <typeparam name="TDoc"></typeparam>
+    /// <returns></returns>
+    public virtual SanityDocumentSet<TDoc> DocumentSet<TDoc>(int maxNestingLevel = 7)
+    {
+        var key = $"{typeof(TDoc).FullName ?? ""}_{maxNestingLevel}";
+        lock (_dsLock)
+        {
+            if (!_documentSets.ContainsKey(key))
+            {
+                _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
+            }
+        }
+        lock (_dsLock)
+        {
+            return (_documentSets[key] as SanityDocumentSet<TDoc>)!;
+        }
+    }
 }

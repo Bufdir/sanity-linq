@@ -1,0 +1,51 @@
+﻿name: .NET CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore sanity-linq.sln
+
+      - name: Build
+        run: dotnet build sanity-linq.sln --configuration Release --no-restore
+
+      - name: Test with coverage (enforce thresholds)
+        run: >
+          dotnet test sanity-linq.sln
+          --configuration Release
+          --no-build
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=cobertura
+          /p:Threshold="80;70"
+          /p:ThresholdType="line;branch"
+          /p:ThresholdStat="total;total"
+
+      - name: Generate coverage report
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator -reports:"tests/Sanity.Linq.Tests/TestResults/**/coverage.cobertura.xml" -targetdir:"coverage-report" -reporttypes:Html;TextSummary
+        env:
+          PATH: $HOME/.dotnet/tools:${{ env.PATH }}
+
+      - name: Publish coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report

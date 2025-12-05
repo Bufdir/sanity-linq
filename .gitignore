@@ -329,3 +329,23 @@ ASALocalRun/
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
 *.ncrunchsolution
+
+# -----------------------------
+# Project-specific: test/coverage reports
+# -----------------------------
+# Coverlet/ReportGenerator outputs
+coverage-report/
+**/coverage-report/
+coverage.cobertura.xml
+**/coverage.cobertura.xml
+coverage.opencover.xml
+**/coverage.opencover.xml
+
+# .NET test result artifacts
+TestResults/
+**/TestResults/
+*.trx
+
+# Other local coverage artifacts
+*.coverage
+*.coveragexml

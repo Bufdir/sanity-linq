@@ -13,7 +13,6 @@
 //  You should have received a copy of the MIT Licence
 //  along with this program.
 
-using System.Collections.Concurrent;
 using Sanity.Linq.BlockContent;
 
 namespace Sanity.Linq;
@@ -308,14 +307,16 @@ public static class SanityDocumentExtensions
             return builder.BuildAsync(blockContent!, buildContext);
         }
 
+        [Obsolete("Use ToHtmlAsync to avoid sync-over-async blocking.")]
         public string ToHtml(SanityHtmlBuilder builder)
         {
             return blockContent.ToHtml(builder, null);
         }
 
+        [Obsolete("Use ToHtmlAsync to avoid sync-over-async blocking.")]
         public string ToHtml(SanityHtmlBuilder builder, object? buildContext)
         {
-            return builder.BuildAsync(blockContent!, buildContext).Result;
+            return builder.BuildAsync(blockContent!, buildContext).GetAwaiter().GetResult();
         }
 
         public Task<string> ToHtmlAsync(SanityDataContext context)
@@ -328,14 +329,16 @@ public static class SanityDocumentExtensions
             return context.HtmlBuilder.BuildAsync(blockContent!, buildContext);
         }
 
+        [Obsolete("Use ToHtmlAsync to avoid sync-over-async blocking.")]
         public string ToHtml(SanityDataContext context)
         {
             return blockContent.ToHtml(context, null);
         }
 
+        [Obsolete("Use ToHtmlAsync to avoid sync-over-async blocking.")]
         public string ToHtml(SanityDataContext context, object? buildContext)
         {
-            return context.HtmlBuilder.BuildAsync(blockContent!, buildContext).Result;
+            return context.HtmlBuilder.BuildAsync(blockContent!, buildContext).GetAwaiter().GetResult();
         }
     }
 }

@@ -1,7 +1,7 @@
 # Sanity LINQ
  **A strongly-typed .Net Client** for [Sanity CMS](https://sanity.io) with support for LINQ queries, mutations, transactions, joins, projections and more...
  
-[![Build status](https://oslofjord.visualstudio.com/sanity-linq/_apis/build/status/Build%20sanity-linq)](https://oslofjord.visualstudio.com/sanity-linq/_build/latest?definitionId=118)
+[![Build status](https://oslofjord.visualstudio.com/sanity-linq/_apis/build/status/Build%20sanity-linq)](https://oslofjord.visualstudio.com/sanity-linq/_build/latest?definitionId=118) [![NuGet Version](https://img.shields.io/nuget/v/Sanity.Linq.svg)](https://www.nuget.org/packages/Sanity.Linq) [![NuGet Downloads](https://img.shields.io/nuget/dt/Sanity.Linq.svg)](https://www.nuget.org/packages/Sanity.Linq)
 
 
 ## Introduction
@@ -12,6 +12,20 @@ Sanity LINQ was intially developed at [Oslofjord Convention Center](https://oslo
 Inspiration was drawn from the .Net client provided by [onyboy](https://github.com/onybo) at https://github.com/onybo/sanity-client.
 
 The Sanity LINQ client goes beyond providing a simple HTTP client and introduces strongly typed queries, projections, mutations and joins - much in the same way as Entity Framework provides this for SQL.
+
+### Features
+- Strongly-typed LINQ → GROQ translation (filters, projections, joins)
+- Mutations and transactions
+- Async APIs and pagination patterns
+- Reference navigation and projection to DTOs
+
+### Supported frameworks
+- netstandard2.1
+- net10.0
+
+## Documentation
+
+- Authoring Best Practices (for consumers and contributors): https://github.com/oslofjord/sanity-linq/blob/HEAD/docs/authoring-best-practices.md
 
 ## Installation
 Sanity.Linq is available as a NuGet package.
@@ -353,11 +367,3 @@ var html = await post.Body.ToHtmlAsync(sanity); // the whole content
 var imageTag = await post.MainImage.ToHtmlAsync(sanity); // just a single block
 ```
 -------
-
-## Contribute
-Feel free to submit pull-requests to the Sanity LINQ project! 
-
-
-### Licence
-
-The Sanity LINQ is available under the [MIT Licence](https://github.com/oslofjord/sanity-linq/blob/master/LICENSE)

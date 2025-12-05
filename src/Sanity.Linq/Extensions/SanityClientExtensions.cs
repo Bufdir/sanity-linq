@@ -23,11 +23,21 @@ namespace Sanity.Linq;
 
 public static class SanityClientExtensions
 {
-    private static readonly HttpClient HttpClient = new();
+    private const int DefaultTimeoutSeconds = 100;
+    private const long DefaultMaxDownloadBytes = 50L * 1024L * 1024L; // 50 MB
 
     extension(SanityClient client)
     {
         public async Task<SanityDocumentResponse<SanityImageAsset>> UploadImageAsync(Uri imageUrl, string? label = null, CancellationToken cancellationToken = default)
+            => await client.UploadImageAsync(imageUrl, null, null, null, label, cancellationToken).ConfigureAwait(false);
+
+        public async Task<SanityDocumentResponse<SanityImageAsset>> UploadImageAsync(
+            Uri imageUrl,
+            HttpClient? httpClient,
+            TimeSpan? timeout,
+            long? maxDownloadBytes,
+            string? label = null,
+            CancellationToken cancellationToken = default)
         {
             if (imageUrl == null)
             {
@@ -42,15 +52,57 @@ public static class SanityClientExtensions
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
 
-            using var response = await HttpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            await using var fs = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            var result = await client.UploadImageAsync(fs, fileName, mimeType, label ?? "Source:" + imageUrl.OriginalString, cancellationToken).ConfigureAwait(false);
-            fs.Close();
-            return result;
+            var maxBytes = maxDownloadBytes ?? DefaultMaxDownloadBytes;
+            var disposeClient = httpClient == null;
+            httpClient ??= new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(DefaultTimeoutSeconds) };
+            try
+            {
+                using var response = await httpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                var contentLength = response.Content.Headers.ContentLength;
+                if (contentLength.HasValue && contentLength.Value > maxBytes)
+                {
+                    throw new InvalidOperationException($"Remote content length {contentLength.Value} exceeds allowed maximum of {maxBytes} bytes");
+                }
+
+                await using var networkStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                await using var limitedStream = new MemoryStream();
+                var buffer = new byte[81_920];
+                long total = 0;
+                int read;
+                while ((read = await networkStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    total += read;
+                    if (total > maxBytes)
+                    {
+                        throw new InvalidOperationException($"Downloaded content exceeded allowed maximum of {maxBytes} bytes");
+                    }
+                    await limitedStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                }
+                limitedStream.Position = 0;
+
+                return await client.UploadImageAsync(limitedStream, fileName, mimeType, label ?? "Source:" + imageUrl.OriginalString, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (disposeClient)
+                {
+                    httpClient.Dispose();
+                }
+            }
         }
 
         public async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(Uri fileUrl, string? label = null, CancellationToken cancellationToken = default)
+            => await client.UploadFileAsync(fileUrl, null, null, null, label, cancellationToken).ConfigureAwait(false);
+
+        public async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(
+            Uri fileUrl,
+            HttpClient? httpClient,
+            TimeSpan? timeout,
+            long? maxDownloadBytes,
+            string? label = null,
+            CancellationToken cancellationToken = default)
         {
             if (fileUrl == null)
             {
@@ -65,12 +117,45 @@ public static class SanityClientExtensions
                 mimeType = MimeTypeMap.GetMimeType(extension);
             }
 
-            using var response = await HttpClient.GetAsync(fileUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            await using var fs = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            var result = await client.UploadFileAsync(fs, fileName, mimeType, label ?? "Source:" + fileUrl.OriginalString, cancellationToken).ConfigureAwait(false);
-            fs.Close();
-            return result;
+            var maxBytes = maxDownloadBytes ?? DefaultMaxDownloadBytes;
+            var disposeClient = httpClient == null;
+            httpClient ??= new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(DefaultTimeoutSeconds) };
+            try
+            {
+                using var response = await httpClient.GetAsync(fileUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                var contentLength = response.Content.Headers.ContentLength;
+                if (contentLength.HasValue && contentLength.Value > maxBytes)
+                {
+                    throw new InvalidOperationException($"Remote content length {contentLength.Value} exceeds allowed maximum of {maxBytes} bytes");
+                }
+
+                await using var networkStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                await using var limitedStream = new MemoryStream();
+                var buffer = new byte[81_920];
+                long total = 0;
+                int read;
+                while ((read = await networkStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    total += read;
+                    if (total > maxBytes)
+                    {
+                        throw new InvalidOperationException($"Downloaded content exceeded allowed maximum of {maxBytes} bytes");
+                    }
+                    await limitedStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                }
+                limitedStream.Position = 0;
+
+                return await client.UploadFileAsync(limitedStream, fileName, mimeType, label ?? "Source:" + fileUrl.OriginalString, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (disposeClient)
+                {
+                    httpClient.Dispose();
+                }
+            }
         }
 
         public Task<SanityMutationResponse<TDoc>> CreateAsync<TDoc>(TDoc document, CancellationToken cancellationToken = default)

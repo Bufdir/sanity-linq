@@ -1,24 +1,4 @@
-﻿<!--
-Copy-write 2018 Oslofjord Operations AS
-
-This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
-
- Sanity LINQ is free software: you can redistribute it and/or modify
- it under the terms of the MIT Licence.
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
-
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
- MIT Licence for more details.
-
- You should have received a copy of the MIT Licence
- along with this program.
-
--->
-
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;net10.0</TargetFrameworks>
@@ -43,6 +23,7 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 	  <Nullable>enable</Nullable>
 	  <LangVersion>latest</LangVersion>
 	  <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+      <PackageReadmeFile>README.md</PackageReadmeFile>
 	  <PackageReleaseNotes>1.0 - Sanity Linq library
 1.1 - BlockContent library
 1.1.1 - Improvements BlockContent
@@ -71,6 +52,7 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 	<PublishRepositoryUrl>true</PublishRepositoryUrl>
 	<EmbedUntrackedSources>true</EmbedUntrackedSources>
 	<DebugType>embedded</DebugType>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
 	<PropertyGroup Condition="'$(TF_BUILD)' == 'true'">
@@ -81,6 +63,11 @@ This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 	<PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
 	<PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include the repository README in the NuGet package root so it renders on nuget.org -->
+    <None Include="..\..\README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 </Project>

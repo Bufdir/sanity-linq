@@ -42,6 +42,31 @@ public class SanityQueryBuilderTests
     }
 
     [Fact]
+    public void ExpandIncludesInProjection_Uses_Method_Parameter_Not_Instance_Field()
+    {
+        var builder = CreateBuilder();
+        var t = builder.GetType();
+
+        // Set a simple projection where include will expand
+        t.GetProperty("Projection")!.SetValue(builder, "author");
+
+        // Leave instance Includes empty to ensure method parameter is honored
+        t.GetProperty("Includes")!.SetValue(builder, new Dictionary<string, string>());
+
+        // Prepare includes dictionary passed directly to the private method
+        var paramIncludes = new Dictionary<string, string>
+        {
+            { "author", CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>)) }
+        };
+
+        // Invoke private ExpandIncludesInProjection via reflection
+        var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var expanded = (string)mi.Invoke(builder, new object[] { "author", paramIncludes })!;
+
+        Assert.Contains("author->", expanded);
+    }
+
+    [Fact]
     public void GetJoinProjection_Primitive_And_Rename()
     {
         var same = CallGetJoinProjection("title", "title", typeof(string));

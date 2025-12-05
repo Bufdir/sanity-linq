@@ -19,7 +19,6 @@ namespace Sanity.Linq.QueryProvider;
 
 public sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
 {
-    private readonly object _queryBuilderLock = new();
     public SanityDataContext Context { get; } = context;
     public Type DocType { get; } = docType;
     public int MaxNestingLevel { get; } = maxNestingLevel;
@@ -101,7 +100,7 @@ public sealed class SanityQueryProvider(Type docType, SanityDataContext context,
     /// </exception>
     public TResult Execute<TResult>(Expression expression)
     {
-        return ExecuteAsync<TResult>(expression).Result;
+        return ExecuteAsync<TResult>(expression).GetAwaiter().GetResult();
     }
 
     /// <summary>

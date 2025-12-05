@@ -1,4 +1,4 @@
-﻿versioningMode: MainLine
+﻿mode: MainLine
 tagPrefix: 'v'
 branches:
   main:

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Sanity.Linq.Demo.Model;
+using Sanity.Linq.Enums;
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -19,19 +20,24 @@ public class TestBase
 
     public async Task ClearAllDataAsync(SanityDataContext sanity)
     {
-        // Clear existing records in single transaction
+        // Clear existing records in a reference-safe order with retries and async visibility
+        // 1) Posts (may reference authors/categories)
         sanity.DocumentSet<Post>().Delete();
-        sanity.DocumentSet<Author>().Delete();
-        sanity.DocumentSet<Category>().Delete();
-        await sanity.CommitAsync();
-
-        // Delete all images
-        await sanity.Images.Delete().CommitAsync();
-
-        // Wait for eventual consistency: ensure all collections are empty
+        await RetryAsync(async () => await sanity.CommitAsync(false, false, SanityMutationVisibility.Async), maxRetries: 5, delayMs: 1000);
         await WaitUntilAsync(async () => (await sanity.DocumentSet<Post>().ToListAsync()).Count == 0, maxRetries: 40, delayMs: 500);
+
+        // 2) Authors (may reference categories)
+        sanity.DocumentSet<Author>().Delete();
+        await RetryAsync(async () => await sanity.CommitAsync(false, false, SanityMutationVisibility.Async), maxRetries: 5, delayMs: 1000);
         await WaitUntilAsync(async () => (await sanity.DocumentSet<Author>().ToListAsync()).Count == 0, maxRetries: 40, delayMs: 500);
+
+        // 3) Categories
+        sanity.DocumentSet<Category>().Delete();
+        await RetryAsync(async () => await sanity.CommitAsync(false, false, SanityMutationVisibility.Async), maxRetries: 5, delayMs: 1000);
         await WaitUntilAsync(async () => (await sanity.DocumentSet<Category>().ToListAsync()).Count == 0, maxRetries: 40, delayMs: 500);
+
+        // 4) Delete all images (best-effort with retry)
+        await RetryAsync(async () => await sanity.Images.Delete().CommitAsync(), maxRetries: 5, delayMs: 1000);
     }
 
     protected static async Task WaitUntilAsync(Func<Task<bool>> condition, int maxRetries = 40, int delayMs = 500)

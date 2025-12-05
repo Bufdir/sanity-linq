@@ -32,6 +32,21 @@ jobs:
           disableCache: true
           useConfigFile: true
           configFilePath: GitVersion.yml
+          targetPath: ${{ github.workspace }}
+
+      - name: Show computed version
+        run: |
+          echo "SemVer: ${{ steps.gitversion.outputs.SemVer }}"
+          echo "NuGetVersionV2: ${{ steps.gitversion.outputs.NuGetVersionV2 }}"
+
+      - name: GitVersion diagnostics (on failure)
+        if: failure()
+        shell: bash
+        run: |
+          dotnet tool install -g GitVersion.Tool --version 6.* || true
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          echo "Running gitversion /diag for troubleshooting..."
+          gitversion /output json /diag || true
 
       - name: Create and push tag if missing
         env:

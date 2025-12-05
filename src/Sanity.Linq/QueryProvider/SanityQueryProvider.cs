@@ -24,9 +24,9 @@ using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
-public class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
+public sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
 {
-    private object _queryBuilderLock = new();
+    private readonly object _queryBuilderLock = new();
     public Type DocType { get; } = docType;
     public SanityDataContext Context { get; } = context;
 

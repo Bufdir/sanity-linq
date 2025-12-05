@@ -53,7 +53,7 @@ public class QueryTests : TestBase
             .CommitAsync();
 
         // Sanity may be eventually consistent for queries; wait until all 3 are visible
-        await WaitUntilAsync(async () => (await categories.ToListAsync()).Count == 3);
+        await WaitUntilAsync(async () => (await categories.ToListAsync()).Count >= 3, maxRetries: 30, delayMs: 500);
 
         // Test 1
         // *[title in ["Conventions", "Festivals"]]
@@ -121,7 +121,8 @@ public class QueryTests : TestBase
         {
             Id = Guid.NewGuid().ToString(),
             Name = "Joe Bloggs",
-            Slug = new SanitySlug("joe"),
+            // Ensure unique slug to avoid conflicts across CI runs
+            Slug = new SanitySlug($"joe-{Guid.NewGuid().ToString("N").Substring(0,8)}"),
             FavoriteCategories =
             [
                 new SanityReference<Category>

@@ -45,8 +45,26 @@ jobs:
           dotnet tool install -g GitVersion.Tool --version 6.*
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Calculating version with GitVersion CLI..."
-          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache)
-          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache)
+          set +e
+          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache 2>&1)
+          STATUS=$?
+          if [ $STATUS -ne 0 ] || [ -z "$SEMVER" ]; then
+            echo "GitVersion failed while calculating SemVer. Output:" >&2
+            echo "$SEMVER" >&2
+            echo "Running diagnostics..." >&2
+            dotnet-gitversion /diag || true
+            exit 1
+          fi
+
+          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache 2>&1)
+          STATUS=$?
+          if [ $STATUS -ne 0 ] || [ -z "$NUGET" ]; then
+            echo "GitVersion failed while calculating NuGetVersionV2. Output:" >&2
+            echo "$NUGET" >&2
+            echo "Running diagnostics..." >&2
+            dotnet-gitversion /diag || true
+            exit 1
+          fi
           echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "NuGetVersionV2=$NUGET" >> "$GITHUB_OUTPUT"
 

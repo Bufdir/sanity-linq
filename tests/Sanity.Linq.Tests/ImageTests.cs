@@ -68,7 +68,17 @@ public class ImageTests : TestBase
 
         await sanity.DocumentSet<Author>().Create(author).CommitAsync();
         // Wait until the created author is queryable
-        await WaitUntilAsync(async () => (await sanity.DocumentSet<Author>().ToListAsync()).Count == 1);
+        await WaitUntilAsync(async () => (await sanity.DocumentSet<Author>().ToListAsync()).Count >= 1, maxRetries: 40, delayMs: 500);
+        // Wait until dereferencing of image asset and category image succeeds
+        await WaitUntilAsync(async () =>
+        {
+            var list = await sanity.DocumentSet<Author>().ToListAsync();
+            var first = list.FirstOrDefault();
+            var hasImageExt = first?.Images?.FirstOrDefault()?.Asset?.Value?.Extension != null;
+            var hasCatImageExt = first?.FavoriteCategories?.FirstOrDefault()?.Value?.MainImage?.Asset?.Value?.Extension != null;
+            return hasImageExt && hasCatImageExt;
+        }, maxRetries: 40, delayMs: 500);
+
         var retrievedDoc = await sanity.DocumentSet<Author>().ToListAsync();
 
         Assert.True(retrievedDoc.FirstOrDefault()?.Images?.FirstOrDefault()?.Asset?.Value?.Extension != null);

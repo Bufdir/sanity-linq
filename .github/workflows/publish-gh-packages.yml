@@ -2,11 +2,6 @@
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Package version (e.g. 1.7.2 or 1.8.0-rc.1)"
-        required: true
-        type: string
   push:
     tags:
       - "v*"
@@ -20,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history required for GitVersion
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -35,24 +32,21 @@ jobs:
       - name: Build (Release)
         run: dotnet build sanity-linq.sln -c Release --no-restore
 
-      - name: Determine version
-        id: version
-        shell: bash
-        run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            VER="${{ github.event.inputs.version }}"
-          else
-            TAG="${GITHUB_REF##*/}"
-            VER="${TAG#v}"
-          fi
-          echo "version=$VER" >> $GITHUB_OUTPUT
+      - name: Install GitVersion
+        uses: GitTools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine version (GitVersion)
+        id: gitversion
+        uses: GitTools/actions/gitversion/execute@v3
 
       - name: Pack
         run: >
           dotnet pack src/Sanity.Linq/Sanity.Linq.csproj
           -c Release --no-build
           -p:ContinuousIntegrationBuild=true
-          -p:PackageVersion=${{ steps.version.outputs.version }}
+          -p:PackageVersion=${{ steps.gitversion.outputs.NuGetVersionV2 }}
           -o ./artifacts
 
       - name: Publish to GitHub Packages

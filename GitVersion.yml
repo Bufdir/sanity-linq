@@ -1,4 +1,5 @@
 ﻿mode: Mainline
+tag-prefix: 'v'
 branches:
   main:
     regex: ^main$
@@ -6,6 +7,19 @@ branches:
   master:
     regex: ^master$
     is-mainline: true
+  develop:
+    regex: ^develop$
+    label: beta
+    is-mainline: false
+  feature:
+    regex: ^features?[/-]
+    label: alpha
+    is-mainline: false
+  release:
+    regex: ^releases?[/-]
+    label: rc
+    is-release-branch: true
+    is-mainline: false
 ignore:
   sha: []
 continuous-delivery-fallback-tag: ''

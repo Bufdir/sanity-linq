@@ -1,6 +1,7 @@
 ﻿name: Auto-tag release (SemVer)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -24,15 +25,17 @@ jobs:
         with:
           versionSpec: '6.x'
 
-      - name: Calculate version
+      - name: Calculate version (GitVersion CLI)
         id: gitversion
-        uses: GitTools/actions/gitversion/execute@v3
-        with:
-          # v3 does not support 'additionalArguments'. Replace '/nocache' with the proper flag.
-          disableCache: true
-          useConfigFile: true
-          configFilePath: GitVersion.yml
-          targetPath: ${{ github.workspace }}
+        shell: bash
+        run: |
+          dotnet tool install -g GitVersion.Tool --version 6.*
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          echo "Calculating version with GitVersion CLI..."
+          SEMVER=$(gitversion /showvariable SemVer /config GitVersion.yml /nocache)
+          NUGET=$(gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache)
+          echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "NuGetVersionV2=$NUGET" >> "$GITHUB_OUTPUT"
 
       - name: Show computed version
         run: |

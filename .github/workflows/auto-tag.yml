@@ -20,13 +20,13 @@ jobs:
           fetch-tags: true
 
       - name: Setup GitVersion
-        uses: GitTools/actions/gitversion/setup@v0
+        uses: GitTools/actions/gitversion/setup@v3
         with:
-          versionSpec: '5.x'
+          versionSpec: '6.x'
 
       - name: Calculate version
         id: gitversion
-        uses: GitTools/actions/gitversion/execute@v0
+        uses: GitTools/actions/gitversion/execute@v3
         with:
           additionalArguments: /diag /nocache
 

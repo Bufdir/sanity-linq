@@ -1,5 +1,4 @@
-﻿mode: Mainline
-tagPrefix: 'v'
+﻿tagPrefix: 'v'
 branches:
   main:
     regex: ^main$

@@ -46,7 +46,7 @@ jobs:
           useConfigFile: true
           configFilePath: GitVersion.yml
           disableCache: true
-          overrideConfig: 'mode=Mainline'
+          overrideConfig: 'versioningMode=MainLine'
 
       - name: Show computed version
         run: |

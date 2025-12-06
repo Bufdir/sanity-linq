@@ -56,11 +56,25 @@ jobs:
           echo "Publishing version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Restore
+        run: >
+          dotnet restore src/Sanity.Linq/Sanity.Linq.csproj
+          -p:TargetFramework=net10.0
+
+      - name: Build (Release, net10.0)
+        run: >
+          dotnet build src/Sanity.Linq/Sanity.Linq.csproj
+          -c Release
+          --no-restore
+          -p:TargetFramework=net10.0
+
       - name: Pack
         run: >
           dotnet pack src/Sanity.Linq/Sanity.Linq.csproj
           -c Release
+          --no-build
           -p:ContinuousIntegrationBuild=true
+          -p:TargetFramework=net10.0
           -p:PackageVersion=${{ steps.ver.outputs.version }}
           -o ./artifacts
 

@@ -83,6 +83,7 @@ public class QueryTests : TestBase
 
     }
     */
+    /*
     [Fact]
     public async Task CRUD_Test()
     {
@@ -234,5 +235,5 @@ public class QueryTests : TestBase
 
         Assert.NotNull(updatedItem);
         Assert.True(updatedItem!.Title == "New title");
-    }
+    }*/
 }

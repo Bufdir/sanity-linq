@@ -4,6 +4,8 @@
     <!-- Enable coverage by default for all test projects under tests/; can be overridden on the CLI -->
     <CollectCoverage Condition="'$(CollectCoverage)' == ''">true</CollectCoverage>
     <CoverletOutputFormat Condition="'$(CoverletOutputFormat)' == ''">cobertura</CoverletOutputFormat>
+    <!-- Write coverage to a deterministic path so CI can always find it -->
+    <CoverletOutput Condition="'$(CoverletOutput)' == ''">$(MSBuildProjectDirectory)/TestResults/coverage</CoverletOutput>
 
     <!-- Coverage thresholds: two values (line;branch) -->
     <Threshold Condition="'$(Threshold)' == ''">80;70</Threshold>

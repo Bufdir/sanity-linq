@@ -43,23 +43,34 @@ jobs:
         shell: bash
         run: |
           set -e
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y jq >/dev/null 2>&1 || true
           dotnet tool install -g GitVersion.Tool --version 6.*
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Calculating version with GitVersion CLI..."
-          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache /verbosity none)
-          if [ -z "$SEMVER" ]; then
-            echo "GitVersion failed while calculating SemVer. Output:" >&2
-            echo "$SEMVER" >&2
-            echo "Running diagnostics..." >&2
+          JSON=$(dotnet-gitversion /config GitVersion.yml /nocache /output json)
+          if [ -z "$JSON" ]; then
+            echo "GitVersion produced empty output. Running diagnostics..." >&2
             dotnet-gitversion /diag || true
             exit 1
           fi
-          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache /verbosity none)
-          if [ -z "$NUGET" ]; then
-            echo "GitVersion failed while calculating NuGetVersionV2. Output:" >&2
-            echo "$NUGET" >&2
+          echo "$JSON" | jq . >/dev/null 2>&1 || {
+            echo "GitVersion output is not valid JSON. Output was:" >&2
+            echo "$JSON" >&2
             echo "Running diagnostics..." >&2
             dotnet-gitversion /diag || true
+            exit 1
+          }
+          SEMVER=$(echo "$JSON" | jq -r .SemVer)
+          NUGET=$(echo "$JSON" | jq -r .NuGetVersionV2)
+          if [ -z "$SEMVER" ] || [ "$SEMVER" = "null" ]; then
+            echo "Failed to extract SemVer from GitVersion JSON. Output was:" >&2
+            echo "$JSON" | head -n 200 >&2
+            exit 1
+          fi
+          if [ -z "$NUGET" ] || [ "$NUGET" = "null" ]; then
+            echo "Failed to extract NuGetVersionV2 from GitVersion JSON. Output was:" >&2
+            echo "$JSON" | head -n 200 >&2
             exit 1
           fi
           echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"

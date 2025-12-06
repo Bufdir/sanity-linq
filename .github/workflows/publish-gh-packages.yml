@@ -58,8 +58,9 @@ jobs:
 
       - name: Restore
         run: >
+          # Restore for all TargetFrameworks defined in the project to ensure
+          # project.assets.json contains entries for netstandard2.1 as well.
           dotnet restore src/Sanity.Linq/Sanity.Linq.csproj
-          -p:TargetFramework=net10.0
 
       - name: Build (Release, net10.0)
         run: >

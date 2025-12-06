@@ -32,38 +32,48 @@ jobs:
           set -e
           sudo apt-get update -y >/dev/null 2>&1 || true
           sudo apt-get install -y jq >/dev/null 2>&1 || true
-          dotnet tool install -g GitVersion.Tool --version 6.*
+          dotnet tool install -g GitVersion.Tool --version 6.5.1
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Calculating version with GitVersion CLI..."
-          # Compute JSON once, then extract variables cleanly
-          JSON=$(dotnet-gitversion /config GitVersion.yml /nocache /output json)
-          if [ -z "$JSON" ]; then
-            echo "GitVersion produced empty output. Running diagnostics..." >&2
-            dotnet-gitversion /diag || true
-            exit 1
-          fi
-          # Validate JSON
-          echo "$JSON" | jq . >/dev/null 2>&1 || {
-            echo "GitVersion output is not valid JSON. Output was:" >&2
-            echo "$JSON" >&2
-            echo "Running diagnostics..." >&2
-            dotnet-gitversion /diag || true
-            exit 1
+          # Show repo context for diagnostics
+          echo "GitVersion.Tool version: $(dotnet-gitversion /version || echo 'unknown')"
+          git describe --tags --always --dirty --match 'v*' || true
+          git log --graph --decorate --oneline -n 30 || true
+
+          WORKJSON=$(mktemp)
+          extract_versions() {
+            local json_file="$1"
+            jq . "$json_file" >/dev/null 2>&1 || return 1
+            local semver
+            local nuget
+            semver=$(jq -r .SemVer < "$json_file")
+            nuget=$(jq -r .NuGetVersionV2 < "$json_file")
+            if [ -z "$semver" ] || [ "$semver" = "null" ]; then return 2; fi
+            if [ -z "$nuget" ] || [ "$nuget" = "null" ]; then return 3; fi
+            echo "SemVer=$semver" >> "$GITHUB_OUTPUT"
+            echo "NuGetVersionV2=$nuget" >> "$GITHUB_OUTPUT"
           }
-          SEMVER=$(echo "$JSON" | jq -r .SemVer)
-          NUGET=$(echo "$JSON" | jq -r .NuGetVersionV2)
-          if [ -z "$SEMVER" ] || [ "$SEMVER" = "null" ]; then
-            echo "Failed to extract SemVer from GitVersion JSON. Output was:" >&2
-            echo "$JSON" | head -n 200 >&2
-            exit 1
+
+          set +e
+          # First try with explicit config
+          dotnet-gitversion /config GitVersion.yml /nocache /output json > "$WORKJSON" 2>gitversion_with_config.err
+          STATUS=$?
+          if [ $STATUS -ne 0 ] || ! extract_versions "$WORKJSON"; then
+            echo "GitVersion with config failed (exit $STATUS) or produced invalid JSON. Falling back without config..." >&2
+            echo "--- gitversion_with_config.err ---" >&2
+            head -n 200 gitversion_with_config.err >&2 || true
+            # Try without config
+            dotnet-gitversion /nocache /output json > "$WORKJSON" 2>gitversion_no_config.err
+            STATUS2=$?
+            if [ $STATUS2 -ne 0 ] || ! extract_versions "$WORKJSON"; then
+              echo "GitVersion failed without config as well (exit $STATUS2). Running diagnostics..." >&2
+              echo "--- gitversion_no_config.err ---" >&2
+              head -n 200 gitversion_no_config.err >&2 || true
+              dotnet-gitversion /diag || true
+              exit 1
+            fi
           fi
-          if [ -z "$NUGET" ] || [ "$NUGET" = "null" ]; then
-            echo "Failed to extract NuGetVersionV2 from GitVersion JSON. Output was:" >&2
-            echo "$JSON" | head -n 200 >&2
-            exit 1
-          fi
-          echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"
-          echo "NuGetVersionV2=$NUGET" >> "$GITHUB_OUTPUT"
+          set -e
 
       - name: Show computed version
         run: |

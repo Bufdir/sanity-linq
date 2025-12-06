@@ -43,6 +43,8 @@ jobs:
           WORKJSON=$(mktemp)
           RAWOUT=$(mktemp)
 
+          SEMVER_VALUE=""
+          NUGET_VALUE=""
           extract_versions() {
             local json_file="$1"
             jq . "$json_file" >/dev/null 2>&1 || return 1
@@ -69,8 +71,8 @@ jobs:
 
             if [[ -z "$semver" || "$semver" == "null" ]]; then return 2; fi
             if [[ -z "$nuget" || "$nuget" == "null" ]]; then return 3; fi
-            echo "SemVer=$semver" >> "$GITHUB_OUTPUT"
-            echo "NuGetVersionV2=$nuget" >> "$GITHUB_OUTPUT"
+            SEMVER_VALUE="$semver"
+            NUGET_VALUE="$nuget"
           }
 
           extract_json_from_raw() {
@@ -119,13 +121,16 @@ PY
           fi
 
           # Ensure outputs are set; if not, fail with diagnostics
-          if [[ -z "${{ steps.gitversion.outputs.SemVer }}" || -z "${{ steps.gitversion.outputs.NuGetVersionV2 }}" ]]; then
+          if [[ -z "$SEMVER_VALUE" || -z "$NUGET_VALUE" ]]; then
             echo "GitVersion failed to produce valid outputs. Running diagnostics..." >&2
             echo "--- Combined output (tail) ---" >&2
             tail -n 200 "$RAWOUT" >&2 || true
             dotnet-gitversion /diag || true
             exit 1
           fi
+          # Export the outputs only after validation
+          echo "SemVer=$SEMVER_VALUE" >> "$GITHUB_OUTPUT"
+          echo "NuGetVersionV2=$NUGET_VALUE" >> "$GITHUB_OUTPUT"
           set -e
 
       - name: Show computed version

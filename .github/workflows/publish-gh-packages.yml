@@ -58,10 +58,27 @@ jobs:
             jq . "$json_file" >/dev/null 2>&1 || return 1
             local semver
             local nuget
+            local mmp
             semver=$(jq -r .SemVer < "$json_file")
             nuget=$(jq -r .NuGetVersionV2 < "$json_file")
-            if [ -z "$semver" ] || [ "$semver" = "null" ]; then return 2; fi
-            if [ -z "$nuget" ] || [ "$nuget" = "null" ]; then return 3; fi
+            mmp=$(jq -r .MajorMinorPatch < "$json_file")
+
+            # If SemVer contains unresolved placeholders like {BranchName}, fall back to MajorMinorPatch
+            if [[ -z "$semver" || "$semver" == "null" || "$semver" == *"{"* ]]; then
+              semver="$mmp"
+            fi
+
+            # If NuGetVersionV2 is missing/null or contains placeholders, synthesize from SemVer/MajorMinorPatch
+            if [[ -z "$nuget" || "$nuget" == "null" || "$nuget" == *"{"* ]]; then
+              if [[ -n "$semver" && "$semver" != "null" ]]; then
+                nuget="$semver"
+              else
+                nuget="$mmp"
+              fi
+            fi
+
+            if [[ -z "$semver" || "$semver" == "null" ]]; then return 2; fi
+            if [[ -z "$nuget" || "$nuget" == "null" ]]; then return 3; fi
             echo "SemVer=$semver" >> "$GITHUB_OUTPUT"
             echo "NuGetVersionV2=$nuget" >> "$GITHUB_OUTPUT"
           }

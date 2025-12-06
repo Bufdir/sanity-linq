@@ -58,14 +58,16 @@ jobs:
 
       - name: Restore
         run: >
-          # Restore for all TargetFrameworks defined in the project to ensure
-          # project.assets.json contains entries for netstandard2.1 as well.
+          # Restore only for net10.0 and force single-TFM evaluation during subsequent steps
           dotnet restore src/Sanity.Linq/Sanity.Linq.csproj
+          -p:TargetFramework=net10.0
+          -p:TargetFrameworks=net10.0
 
       - name: Build (Release, net10.0)
         run: >
           dotnet build src/Sanity.Linq/Sanity.Linq.csproj
           -c Release
+          -p:TargetFrameworks=net10.0
           -p:TargetFramework=net10.0
 
       - name: Pack
@@ -74,6 +76,7 @@ jobs:
           -c Release
           --no-build
           -p:ContinuousIntegrationBuild=true
+          -p:TargetFrameworks=net10.0
           -p:TargetFramework=net10.0
           -p:PackageVersion=${{ steps.ver.outputs.version }}
           -o ./artifacts

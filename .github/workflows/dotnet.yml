@@ -1,71 +1,13 @@
-﻿name: .NET CI
+﻿name: .NET CI (deprecated)
+
+# This workflow is deprecated and kept only as a reusable workflow to avoid duplicate CI runs.
+# Use ".NET CI (tests + coverage)" in .github/workflows/test.yml instead.
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  workflow_call:
 
 jobs:
-  build-test:
+  noop:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            10.0.x
-
-      - name: Restore
-        run: dotnet restore sanity-linq.sln
-
-      - name: Build
-        run: dotnet build sanity-linq.sln --configuration Release --no-restore
-
-      - name: Test with coverage (enforce thresholds)
-        run: |
-          # MSBuild defaults (coverage + thresholds) are set in tests/Directory.Build.props
-          # Explicitly set key coverage properties to guarantee Cobertura output on CI
-          # (no semicolons here, so shell parsing is safe)
-          dotnet test sanity-linq.sln --configuration Release --no-build \
-            -p:CollectCoverage=true \
-            -p:CoverletOutputFormat=cobertura \
-            -p:CoverletOutput="${GITHUB_WORKSPACE}/tests/Sanity.Linq.Tests/TestResults/coverage"
-
-      - name: Debug – list coverage files
-        shell: bash
-        run: |
-          echo "Searching for coverage.cobertura.xml files..."
-          find . -type f -name 'coverage.cobertura.xml' -printf '%p\n' || true
-          echo "\nListing any .trx test result files..."
-          find . -type f -name '*.trx' -printf '%p\n' || true
-          echo "\nListing TestResults folder structure under tests/ (if any)..."
-          ls -R tests/**/TestResults 2>/dev/null || true
-
-      - name: Guard – fail clearly if no coverage files were produced
-        shell: bash
-        run: |
-          set -e
-          FOUND=$(find . -type f -name 'coverage.cobertura.xml' | wc -l)
-          if [ "$FOUND" -eq 0 ]; then
-            echo "No Cobertura coverage files were found after test run. See the previous debug step for details.\n" >&2
-            echo "If this persists, ensure tests/Directory.Build.props is applied and that the test project indeed executes tests." >&2
-            exit 1
-          fi
-
-      - name: Generate coverage report
-        uses: danielpalme/ReportGenerator-GitHub-Action@5
-        with:
-          reports: '**/TestResults/**/coverage.cobertura.xml;tests/**/TestResults/**/coverage.cobertura.xml;tests/**/coverage.cobertura.xml;coverage.cobertura.xml'
-          targetdir: 'coverage-report'
-          reporttypes: 'Html;Cobertura'
-
-      - name: Publish coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage-report
+      - run: echo "This workflow is deprecated. Use .github/workflows/test.yml instead."

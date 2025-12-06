@@ -20,20 +20,39 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Setup GitVersion
-        uses: GitTools/actions/gitversion/setup@v3
+      - name: Install GitVersion CLI
+        uses: actions/setup-dotnet@v4
         with:
-          versionSpec: '6.x'
-
-      - name: Calculate version (GitVersion Execute)
+          dotnet-version: 10.0.x
+      
+      - name: Calculate version (GitVersion CLI)
         id: gitversion
-        uses: GitTools/actions/gitversion/execute@v3
-        with:
-          targetPath: ${{ github.workspace }}
-          useConfigFile: true
-          configFilePath: GitVersion.yml
-          disableCache: true
-          overrideConfig: 'versioningMode=MainLine'
+        shell: bash
+        run: |
+          set -e
+          dotnet tool install -g GitVersion.Tool --version 6.*
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          echo "Calculating version with GitVersion CLI..."
+          # Get SemVer
+          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache 2>&1) || true
+          if [ -z "$SEMVER" ]; then
+            echo "GitVersion failed while calculating SemVer. Output:" >&2
+            echo "$SEMVER" >&2
+            echo "Running diagnostics..." >&2
+            dotnet-gitversion /diag || true
+            exit 1
+          fi
+          # Get NuGetVersionV2
+          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache 2>&1) || true
+          if [ -z "$NUGET" ]; then
+            echo "GitVersion failed while calculating NuGetVersionV2. Output:" >&2
+            echo "$NUGET" >&2
+            echo "Running diagnostics..." >&2
+            dotnet-gitversion /diag || true
+            exit 1
+          fi
+          echo "SemVer=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "NuGetVersionV2=$NUGET" >> "$GITHUB_OUTPUT"
 
       - name: Show computed version
         run: |

@@ -15,7 +15,6 @@ branches:
     label: rc
 ignore:
   sha: []
-continuous-delivery-fallback-tag: ''
 commit-message-incrementing: Enabled
 tag-pre-release-weight: 0
 assembly-versioning-scheme: MajorMinorPatch

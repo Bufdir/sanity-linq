@@ -67,15 +67,15 @@ jobs:
           }
 
           set +e
-          # First try with explicit config
-          dotnet-gitversion /config GitVersion.yml /nocache /output json > "$WORKJSON" 2>gitversion_with_config.err
+          # First try with explicit config and explicit mode override to avoid YAML enum ambiguity across versions
+          dotnet-gitversion /config GitVersion.yml /nocache /output json /overrideconfig mode=Mainline > "$WORKJSON" 2>gitversion_with_config.err
           STATUS=$?
           if [ $STATUS -ne 0 ] || ! extract_versions "$WORKJSON"; then
             echo "GitVersion with config failed (exit $STATUS) or produced invalid JSON. Falling back without config..." >&2
             echo "--- gitversion_with_config.err ---" >&2
             head -n 200 gitversion_with_config.err >&2 || true
             # Try without config
-            dotnet-gitversion /nocache /output json > "$WORKJSON" 2>gitversion_no_config.err
+            dotnet-gitversion /nocache /output json /overrideconfig mode=Mainline > "$WORKJSON" 2>gitversion_no_config.err
             STATUS2=$?
             if [ $STATUS2 -ne 0 ] || ! extract_versions "$WORKJSON"; then
               echo "GitVersion failed without config as well (exit $STATUS2). Running diagnostics..." >&2

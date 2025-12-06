@@ -29,7 +29,12 @@ jobs:
       - name: Test with coverage (enforce thresholds)
         run: |
           # MSBuild defaults (coverage + thresholds) are set in tests/Directory.Build.props
-          dotnet test sanity-linq.sln --configuration Release --no-build
+          # Explicitly set key coverage properties to guarantee Cobertura output on CI
+          # (no semicolons here, so shell parsing is safe)
+          dotnet test sanity-linq.sln --configuration Release --no-build \
+            -p:CollectCoverage=true \
+            -p:CoverletOutputFormat=cobertura \
+            -p:CoverletOutput="${GITHUB_WORKSPACE}/tests/Sanity.Linq.Tests/TestResults/coverage"
 
       - name: Debug – list coverage files
         shell: bash

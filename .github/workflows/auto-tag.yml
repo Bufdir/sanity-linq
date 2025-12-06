@@ -34,7 +34,7 @@ jobs:
           export PATH="$PATH:$HOME/.dotnet/tools"
           echo "Calculating version with GitVersion CLI..."
           # Get SemVer
-          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache 2>&1) || true
+          SEMVER=$(dotnet-gitversion /showvariable SemVer /config GitVersion.yml /nocache /verbosity none)
           if [ -z "$SEMVER" ]; then
             echo "GitVersion failed while calculating SemVer. Output:" >&2
             echo "$SEMVER" >&2
@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
           # Get NuGetVersionV2
-          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache 2>&1) || true
+          NUGET=$(dotnet-gitversion /showvariable NuGetVersionV2 /config GitVersion.yml /nocache /verbosity none)
           if [ -z "$NUGET" ]; then
             echo "GitVersion failed while calculating NuGetVersionV2. Output:" >&2
             echo "$NUGET" >&2

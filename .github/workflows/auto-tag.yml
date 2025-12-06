@@ -1,11 +1,12 @@
-﻿name: Auto-tag release (SemVer)
+﻿name: Create release tag
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
+    inputs:
+      version:
+        description: 'Version to tag (e.g. 1.2.3)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -20,140 +21,19 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Install GitVersion CLI
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-      
-      - name: Calculate version (GitVersion CLI)
-        id: gitversion
-        shell: bash
-        run: |
-          set -e
-          sudo apt-get update -y >/dev/null 2>&1 || true
-          sudo apt-get install -y jq >/dev/null 2>&1 || true
-          dotnet tool install -g GitVersion.Tool --version 6.5.1
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          echo "Calculating version with GitVersion CLI..."
-          # Show repo context for diagnostics
-          echo "GitVersion.Tool version: $(dotnet-gitversion /version || echo 'unknown')"
-          git describe --tags --always --dirty --match 'v*' || true
-          git log --graph --decorate --oneline -n 30 || true
-
-          WORKJSON=$(mktemp)
-          RAWOUT=$(mktemp)
-
-          SEMVER_VALUE=""
-          NUGET_VALUE=""
-          extract_versions() {
-            local json_file="$1"
-            jq . "$json_file" >/dev/null 2>&1 || return 1
-            local semver
-            local nuget
-            local mmp
-            semver=$(jq -r .SemVer < "$json_file")
-            nuget=$(jq -r .NuGetVersionV2 < "$json_file")
-            mmp=$(jq -r .MajorMinorPatch < "$json_file")
-
-            # If SemVer contains unresolved placeholders like {BranchName}, fall back to MajorMinorPatch
-            if [[ -z "$semver" || "$semver" == "null" || "$semver" == *"{"* ]]; then
-              semver="$mmp"
-            fi
-
-            # If NuGetVersionV2 is missing/null or contains placeholders, synthesize from SemVer/MajorMinorPatch
-            if [[ -z "$nuget" || "$nuget" == "null" || "$nuget" == *"{"* ]]; then
-              if [[ -n "$semver" && "$semver" != "null" ]]; then
-                nuget="$semver"
-              else
-                nuget="$mmp"
-              fi
-            fi
-
-            if [[ -z "$semver" || "$semver" == "null" ]]; then return 2; fi
-            if [[ -z "$nuget" || "$nuget" == "null" ]]; then return 3; fi
-            SEMVER_VALUE="$semver"
-            NUGET_VALUE="$nuget"
-          }
-
-          extract_json_from_raw() {
-            local raw_file="$1"
-            local out_json="$2"
-            python3 - "$raw_file" "$out_json" << 'PY' || return 1
-import sys, json
-raw_path, out_path = sys.argv[1], sys.argv[2]
-data = open(raw_path, 'rb').read().decode('utf-8', 'replace')
-start = data.find('{')
-end = data.rfind('}')
-if start != -1 and end != -1 and end > start:
-    s = data[start:end+1]
-    # validate JSON
-    json.loads(s)
-    open(out_path, 'w', encoding='utf-8').write(s)
-    sys.exit(0)
-sys.exit(1)
-PY
-          }
-
-          try_gitversion() {
-            local args=("$@")
-            : > "$RAWOUT"
-            # Capture combined stdout+stderr (GitVersion sometimes writes JSON to stderr on failure)
-            if ! dotnet-gitversion "${args[@]}" > "$RAWOUT" 2>&1; then
-              echo "dotnet-gitversion exited non-zero, attempting to parse JSON from combined output..." >&2
-            fi
-            if extract_json_from_raw "$RAWOUT" "$WORKJSON" && jq . "$WORKJSON" >/dev/null 2>&1; then
-              return 0
-            fi
-            return 1
-          }
-
-          set +e
-          # First try with explicit config and explicit mode override to avoid YAML enum ambiguity across versions
-          if try_gitversion /config GitVersion.yml /nocache /output json /overrideconfig mode=Mainline; then
-            extract_versions "$WORKJSON" || true
-          else
-            echo "GitVersion with config failed or JSON could not be parsed. Falling back without config..." >&2
-            echo "--- gitversion_with_config.combined ---" >&2
-            head -n 200 "$RAWOUT" >&2 || true
-            if try_gitversion /nocache /output json /overrideconfig mode=Mainline; then
-              extract_versions "$WORKJSON" || true
-            fi
-          fi
-
-          # Ensure outputs are set; if not, fail with diagnostics
-          if [[ -z "$SEMVER_VALUE" || -z "$NUGET_VALUE" ]]; then
-            echo "GitVersion failed to produce valid outputs. Running diagnostics..." >&2
-            echo "--- Combined output (tail) ---" >&2
-            tail -n 200 "$RAWOUT" >&2 || true
-            dotnet-gitversion /diag || true
-            exit 1
-          fi
-          # Export the outputs only after validation
-          echo "SemVer=$SEMVER_VALUE" >> "$GITHUB_OUTPUT"
-          echo "NuGetVersionV2=$NUGET_VALUE" >> "$GITHUB_OUTPUT"
-          set -e
-
-      - name: Show computed version
-        run: |
-          echo "SemVer: ${{ steps.gitversion.outputs.SemVer }}"
-          echo "NuGetVersionV2: ${{ steps.gitversion.outputs.NuGetVersionV2 }}"
-
-      - name: GitVersion diagnostics (on failure)
-        if: failure()
-        shell: bash
-        run: |
-          dotnet tool install -g GitVersion.Tool --version 6.* || true
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          echo "Running gitversion /diag for troubleshooting..."
-          dotnet-gitversion /diag || true
-
-      - name: Create and push tag if missing
+      - name: Create and push tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          VER=${{ steps.gitversion.outputs.SemVer }}
-          TAG=v$VER
-          echo "Computed version: $VER"
+          set -euo pipefail
+          VER="${{ inputs.version }}"
+          if [[ -z "$VER" ]]; then
+            echo "version input is required" >&2
+            exit 1
+          fi
+          TAG="v$VER"
+          echo "Tag to create: $TAG"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping."
             exit 0

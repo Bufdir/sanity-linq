@@ -1,10 +1,10 @@
-﻿name: Publish NuGet (GitHub Packages)
+﻿name: Publish package (GitHub Packages)
 
 on:
-  workflow_dispatch:
   push:
     tags:
-      - "v*"
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -16,149 +16,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history required for GitVersion
+          fetch-depth: 0
           fetch-tags: true
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            10.0.x
-            8.0.x
-            9.0.x
-
-      - name: Restore
-        run: dotnet restore sanity-linq.sln
-
-      - name: Build (Release)
-        run: dotnet build sanity-linq.sln -c Release --no-restore
-
-      - name: Install .NET (for GitVersion CLI)
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Determine version (GitVersion CLI)
-        id: gitversion
+      - name: Determine version from tag
+        id: ver
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -y >/dev/null 2>&1 || true
-          sudo apt-get install -y jq >/dev/null 2>&1 || true
-          dotnet tool install -g GitVersion.Tool --version 6.*
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          echo "Calculating version with GitVersion CLI..."
-          echo "GitVersion.Tool version: $(dotnet-gitversion /version || echo 'unknown')"
-          git describe --tags --always --dirty --match 'v*' || true
-          git log --graph --decorate --oneline -n 30 || true
-          WORKJSON=$(mktemp)
-          RAWOUT=$(mktemp)
-
-          SEMVER_VALUE=""
-          NUGET_VALUE=""
-          extract_versions() {
-            local json_file="$1"
-            jq . "$json_file" >/dev/null 2>&1 || return 1
-            local semver
-            local nuget
-            local mmp
-            semver=$(jq -r .SemVer < "$json_file")
-            nuget=$(jq -r .NuGetVersionV2 < "$json_file")
-            mmp=$(jq -r .MajorMinorPatch < "$json_file")
-
-            # If SemVer contains unresolved placeholders like {BranchName}, fall back to MajorMinorPatch
-            if [[ -z "$semver" || "$semver" == "null" || "$semver" == *"{"* ]]; then
-              semver="$mmp"
-            fi
-
-            # If NuGetVersionV2 is missing/null or contains placeholders, synthesize from SemVer/MajorMinorPatch
-            if [[ -z "$nuget" || "$nuget" == "null" || "$nuget" == *"{"* ]]; then
-              if [[ -n "$semver" && "$semver" != "null" ]]; then
-                nuget="$semver"
-              else
-                nuget="$mmp"
-              fi
-            fi
-
-            if [[ -z "$semver" || "$semver" == "null" ]]; then return 2; fi
-            if [[ -z "$nuget" || "$nuget" == "null" ]]; then return 3; fi
-            SEMVER_VALUE="$semver"
-            NUGET_VALUE="$nuget"
-          }
-
-          extract_json_from_raw() {
-            local raw_file="$1"
-            local out_json="$2"
-            python3 - "$raw_file" "$out_json" << 'PY' || return 1
-import sys, json
-raw_path, out_path = sys.argv[1], sys.argv[2]
-data = open(raw_path, 'rb').read().decode('utf-8', 'replace')
-start = data.find('{')
-end = data.rfind('}')
-if start != -1 and end != -1 and end > start:
-    s = data[start:end+1]
-    json.loads(s)
-    open(out_path, 'w', encoding='utf-8').write(s)
-    sys.exit(0)
-sys.exit(1)
-PY
-          }
-
-          try_gitversion() {
-            local args=("$@")
-            : > "$RAWOUT"
-            if ! dotnet-gitversion "${args[@]}" > "$RAWOUT" 2>&1; then
-              echo "dotnet-gitversion exited non-zero, attempting to parse JSON from combined output..." >&2
-            fi
-            if extract_json_from_raw "$RAWOUT" "$WORKJSON" && jq . "$WORKJSON" >/dev/null 2>&1; then
-              return 0
-            fi
-            return 1
-          }
-
-          set +e
-          if try_gitversion /config GitVersion.yml /nocache /output json /overrideconfig mode=Mainline; then
-            extract_versions "$WORKJSON" || true
-          else
-            echo "GitVersion with config failed or JSON could not be parsed. Falling back without config..." >&2
-            echo "--- gitversion_with_config.combined ---" >&2
-            head -n 200 "$RAWOUT" >&2 || true
-            if try_gitversion /nocache /output json /overrideconfig mode=Mainline; then
-              extract_versions "$WORKJSON" || true
-            fi
-          fi
-
-          if [[ -z "$SEMVER_VALUE" || -z "$NUGET_VALUE" ]]; then
-            echo "GitVersion failed to produce valid outputs. Running diagnostics..." >&2
-            echo "--- Combined output (tail) ---" >&2
-            tail -n 200 "$RAWOUT" >&2 || true
-            dotnet-gitversion /diag || true
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -z "$VERSION" ]]; then
+            echo "Tag name not available or empty." >&2
             exit 1
           fi
-
-          echo "SemVer=$SEMVER_VALUE" >> "$GITHUB_OUTPUT"
-          echo "NuGetVersionV2=$NUGET_VALUE" >> "$GITHUB_OUTPUT"
-
-      - name: Show computed version
-        run: |
-          echo "SemVer: ${{ steps.gitversion.outputs.SemVer }}"
-          echo "NuGetVersionV2: ${{ steps.gitversion.outputs.NuGetVersionV2 }}"
-
-      - name: GitVersion diagnostics (on failure)
-        if: failure()
-        shell: bash
-        run: |
-          dotnet tool install -g GitVersion.Tool --version 6.* || true
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          echo "Running gitversion /diag for troubleshooting..."
-          dotnet-gitversion /diag || true
+          echo "Publishing version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Pack
         run: >
           dotnet pack src/Sanity.Linq/Sanity.Linq.csproj
-          -c Release --no-build
+          -c Release
           -p:ContinuousIntegrationBuild=true
-          -p:PackageVersion=${{ steps.gitversion.outputs.NuGetVersionV2 }}
+          -p:PackageVersion=${{ steps.ver.outputs.version }}
           -o ./artifacts
 
       - name: Publish to GitHub Packages

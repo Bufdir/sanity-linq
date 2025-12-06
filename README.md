@@ -39,6 +39,13 @@ PM> Install-Package Sanity.Linq
 > dotnet add package Sanity.Linq
 ```
 
+### Release and publish (maintainers)
+- Create a release tag via GitHub Actions → "Create release tag" with input `version` like `1.2.3`. This creates `v1.2.3`.
+- Pushing the tag triggers the workflow "Publish package (GitHub Packages)", which packs and publishes version `1.2.3`.
+- Do not pass non‑SemVer values (e.g., branch names like `master`) to `PackageVersion`. For manual local pack, use:
+  - Release: `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=1.2.3 -o ./artifacts`
+  - CI prerelease (if needed): `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=0.0.0-ci.1.abcd123 -o ./artifacts`
+
 
 ## Getting Started
 

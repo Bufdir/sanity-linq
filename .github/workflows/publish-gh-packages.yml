@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.3). Optional when running on a tag.'
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -24,16 +29,30 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Determine version from tag
+      - name: Determine version
         id: ver
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Prefer tag-derived version when running on refs/tags/v*
+          VERSION=""
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* || "${GITHUB_REF_NAME:-}" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          # If not on a tag or tag missing, fall back to manual input when provided
           if [[ -z "$VERSION" ]]; then
-            echo "Tag name not available or empty." >&2
+            INPUT_VER='${{ inputs.version || '' }}'
+            if [[ -n "$INPUT_VER" ]]; then
+              VERSION="$INPUT_VER"
+            fi
+          fi
+
+          if [[ -z "$VERSION" ]]; then
+            echo "No version could be determined. Run this workflow either on a tag named v<semver>, or provide 'version' input when manually dispatching." >&2
             exit 1
           fi
+
           echo "Publishing version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 

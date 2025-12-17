@@ -25,6 +25,8 @@ public class SanityOptions
     public string? Token { get; set; }
 
     public bool UseCdn { get; set; }
+    
+    public bool Debug { get; set; }
 
     private string _apiVersion = "v1";
         

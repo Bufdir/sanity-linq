@@ -13,6 +13,7 @@
 //  You should have received a copy of the MIT License
 //  along with this program.
 
+using Microsoft.Extensions.Logging;
 using Sanity.Linq.BlockContent;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
@@ -38,7 +39,7 @@ public class SanityDataContext
     /// <param name="serializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
-    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory) { }
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory, logger) { }
 
     /// <summary>
     /// Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
@@ -48,7 +49,7 @@ public class SanityDataContext
     /// <param name="deserializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
-    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null)
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null)
     {
         if (options == null)
         {
@@ -64,7 +65,7 @@ public class SanityDataContext
 
         SerializerSettings = serializerSettings ?? defaultSerializerSettings;
         DeserializerSettings = deserializerSettings ?? defaultSerializerSettings;
-        Client = new SanityClient(options, SerializerSettings, DeserializerSettings, clientFactory);
+        Client = new SanityClient(options, SerializerSettings, DeserializerSettings, clientFactory, logger);
         Mutations = new SanityMutationBuilder(Client);
         HtmlBuilder = new SanityHtmlBuilder(options, null, SerializerSettings, htmlBuilderOptions);
     }

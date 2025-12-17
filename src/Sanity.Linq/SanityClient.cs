@@ -13,6 +13,7 @@
 //  You should have received a copy of the MIT License
 //  along with this program.
 
+using Microsoft.Extensions.Logging;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
 using Sanity.Linq.Enums;
@@ -25,18 +26,21 @@ namespace Sanity.Linq;
 
 public class SanityClient
 {
-    protected SanityOptions Options;
     private readonly IHttpClientFactory? _factory;
+    private readonly ILogger? _logger;
+    private readonly SanityOptions _options;
     private HttpClient _httpClient = null!;
     private HttpClient _httpQueryClient = null!;
 
-    public SanityClient(SanityOptions options, JsonSerializerSettings? serializerSettings = null, IHttpClientFactory? clientFactory = null) : this(options, serializerSettings, serializerSettings, clientFactory)
-    { }
-
-    public SanityClient(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, IHttpClientFactory? clientFactory = null)
+    public SanityClient(SanityOptions options, JsonSerializerSettings? serializerSettings = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, clientFactory, logger)
     {
-        Options = options;
+    }
+
+    public SanityClient(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, IHttpClientFactory? clientFactory = null, ILogger? logger = null)
+    {
+        _options = options;
         _factory = clientFactory;
+        _logger = logger;
 
         var defaultSerializerSettings = new JsonSerializerSettings
         {
@@ -66,32 +70,29 @@ public class SanityClient
 
     public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(query))
-        {
-            throw new ArgumentException("Query cannot be empty", nameof(query));
-        }
+        if (string.IsNullOrEmpty(query)) throw new ArgumentException("Query cannot be empty", nameof(query));
         var oQuery = new SanityQuery
         {
             Query = query,
             Params = parameters
         };
+
+        if (_options.Debug) _logger?.LogDebug("Query: {Query}", oQuery.Query);
+
         var json = new StringContent(JsonConvert.SerializeObject(oQuery, Formatting.None, SerializerSettings), Encoding.UTF8, "application/json");
-        var response = await _httpQueryClient.PostAsync($"data/query/{WebUtility.UrlEncode(Options.Dataset)}", json, cancellationToken).ConfigureAwait(false);
+        var response = await _httpQueryClient.PostAsync($"data/query/{WebUtility.UrlEncode(_options.Dataset)}", json, cancellationToken).ConfigureAwait(false);
 
         return await HandleHttpResponseAsync<SanityQueryResponse<TResult>>(response).ConfigureAwait(false);
     }
 
     public virtual async Task<SanityDocumentsResponse<TDoc>> GetDocumentAsync<TDoc>(string id, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(id))
-        {
-            throw new ArgumentException("Id cannot be empty", nameof(id));
-        }
-        var response = await _httpQueryClient.GetAsync($"data/doc/{WebUtility.UrlEncode(Options.Dataset)}/{WebUtility.UrlEncode(id)}", cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(id)) throw new ArgumentException("Id cannot be empty", nameof(id));
+        var response = await _httpQueryClient.GetAsync($"data/doc/{WebUtility.UrlEncode(_options.Dataset)}/{WebUtility.UrlEncode(id)}", cancellationToken).ConfigureAwait(false);
         return await HandleHttpResponseAsync<SanityDocumentsResponse<TDoc>>(response).ConfigureAwait(false);
     }
 
-    public void Initialize()
+    private void Initialize()
     {
         // Initialize serialization settings
 
@@ -99,18 +100,15 @@ public class SanityClient
         _httpQueryClient = _factory?.CreateClient() ?? new HttpClient();
         _httpQueryClient.DefaultRequestHeaders.Accept.Clear();
         _httpQueryClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        _httpQueryClient.BaseAddress = Options.UseCdn switch
+        _httpQueryClient.BaseAddress = _options.UseCdn switch
         {
-            true => new Uri($"https://{WebUtility.UrlEncode(Options.ProjectId)}.apicdn.sanity.io/{Options.ApiVersion}/"),
-            _ => new Uri($"https://{WebUtility.UrlEncode(Options.ProjectId)}.api.sanity.io/{Options.ApiVersion}/")
+            true => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.apicdn.sanity.io/{_options.ApiVersion}/"),
+            _ => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/")
         };
-        if (!string.IsNullOrEmpty(Options.Token))
-        {
-            _httpQueryClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Options.Token);
-        }
+        if (!string.IsNullOrEmpty(_options.Token)) _httpQueryClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
 
-        // Initialize client for non-query requests (i.e. requests than never use CDN)
-        if (!Options.UseCdn)
+        // Initialize the client for non-query requests (i.e., requests that never use CDN)
+        if (!_options.UseCdn)
         {
             _httpClient = _httpQueryClient;
         }
@@ -119,11 +117,8 @@ public class SanityClient
             _httpClient = _factory?.CreateClient() ?? new HttpClient();
             _httpClient.DefaultRequestHeaders.Accept.Clear();
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            _httpClient.BaseAddress = new Uri($"https://{WebUtility.UrlEncode(Options.ProjectId)}.api.sanity.io/{Options.ApiVersion}/");
-            if (!string.IsNullOrEmpty(Options.Token))
-            {
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Options.Token);
-            }
+            _httpClient.BaseAddress = new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/");
+            if (!string.IsNullOrEmpty(_options.Token)) _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
         }
     }
 
@@ -137,22 +132,13 @@ public class SanityClient
     public virtual async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(Stream stream, string fileName, string? contentType = null, string? label = null, CancellationToken cancellationToken = default)
     {
         var query = new List<string>();
-        if (!string.IsNullOrEmpty(fileName))
-        {
-            query.Add($"filename={WebUtility.UrlEncode(fileName)}");
-        }
-        if (!string.IsNullOrEmpty(label))
-        {
-            query.Add($"label={WebUtility.UrlEncode(label)}");
-        }
-        var uri = $"assets/files/{WebUtility.UrlEncode(Options.Dataset)}{(query.Count > 0 ? "?" + query.Aggregate((c, n) => c + "&" + n) : "")}";
+        if (!string.IsNullOrEmpty(fileName)) query.Add($"filename={WebUtility.UrlEncode(fileName)}");
+        if (!string.IsNullOrEmpty(label)) query.Add($"label={WebUtility.UrlEncode(label)}");
+        var uri = $"assets/files/{WebUtility.UrlEncode(_options.Dataset)}{(query.Count > 0 ? "?" + query.Aggregate((c, n) => c + "&" + n) : "")}";
         var request = new HttpRequestMessage(HttpMethod.Post, uri);
 
         request.Content = new StreamContent(stream);
-        if (!string.IsNullOrEmpty(contentType))
-        {
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        }
+        if (!string.IsNullOrEmpty(contentType)) request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
 
         var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         return await HandleHttpResponseAsync<SanityDocumentResponse<SanityFileAsset>>(response).ConfigureAwait(false);
@@ -168,22 +154,13 @@ public class SanityClient
     public virtual async Task<SanityDocumentResponse<SanityImageAsset>> UploadImageAsync(Stream stream, string fileName, string? contentType = null, string? label = null, CancellationToken cancellationToken = default)
     {
         var query = new List<string>();
-        if (!string.IsNullOrEmpty(fileName))
-        {
-            query.Add($"filename={WebUtility.UrlEncode(fileName)}");
-        }
-        if (!string.IsNullOrEmpty(label))
-        {
-            query.Add($"label={WebUtility.UrlEncode(label)}");
-        }
-        var uri = $"assets/images/{WebUtility.UrlEncode(Options.Dataset)}{(query.Count > 0 ? "?" + query.Aggregate((c, n) => c + "&" + n) : "")}";
+        if (!string.IsNullOrEmpty(fileName)) query.Add($"filename={WebUtility.UrlEncode(fileName)}");
+        if (!string.IsNullOrEmpty(label)) query.Add($"label={WebUtility.UrlEncode(label)}");
+        var uri = $"assets/images/{WebUtility.UrlEncode(_options.Dataset)}{(query.Count > 0 ? "?" + query.Aggregate((c, n) => c + "&" + n) : "")}";
         var request = new HttpRequestMessage(HttpMethod.Post, uri);
 
         request.Content = new StreamContent(stream);
-        if (!string.IsNullOrEmpty(contentType))
-        {
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        }
+        if (!string.IsNullOrEmpty(contentType)) request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
 
         var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         return await HandleHttpResponseAsync<SanityDocumentResponse<SanityImageAsset>>(response).ConfigureAwait(false);
@@ -191,10 +168,7 @@ public class SanityClient
 
     protected virtual async Task<TResult> CommitMutationsInternalAsync<TResult>(object mutations, bool returnIds = false, bool returnDocuments = false, SanityMutationVisibility visibility = SanityMutationVisibility.Sync, CancellationToken cancellationToken = default)
     {
-        if (mutations == null)
-        {
-            throw new ArgumentNullException(nameof(mutations));
-        }
+        if (mutations == null) throw new ArgumentNullException(nameof(mutations));
 
         var json = mutations switch
         {
@@ -203,23 +177,22 @@ public class SanityClient
             _ => JsonConvert.SerializeObject(mutations, Formatting.None, SerializerSettings)
         };
 
-        var response = await _httpClient.PostAsync($"data/mutate/{WebUtility.UrlEncode(Options.Dataset)}?returnIds={returnIds.ToString().ToLower()}&returnDocuments={returnDocuments.ToString().ToLower()}&visibility={visibility.ToString().ToLower()}", new StringContent(json, Encoding.UTF8, "application/json"), cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.PostAsync($"data/mutate/{WebUtility.UrlEncode(_options.Dataset)}?returnIds={returnIds.ToString().ToLower()}&returnDocuments={returnDocuments.ToString().ToLower()}&visibility={visibility.ToString().ToLower()}", new StringContent(json, Encoding.UTF8, "application/json"), cancellationToken).ConfigureAwait(false);
         return await HandleHttpResponseAsync<TResult>(response).ConfigureAwait(false);
     }
 
     protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response)
     {
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        LogHttpResponseContent(content);
+
         var requestUri = response.RequestMessage?.RequestUri;
         if (response.IsSuccessStatusCode)
-        {
             try
             {
                 var obj = JsonConvert.DeserializeObject<TResponse>(content, DeserializerSettings);
-                if (obj != null)
-                {
-                    return obj;
-                }
+                if (obj != null) return obj;
 
                 var preview = Truncate(content, 2048);
                 throw new SanityDeserializationException("Failed to deserialize Sanity response: deserialized to null", preview, requestUri);
@@ -233,7 +206,6 @@ public class SanityClient
                 var preview = Truncate(content, 2048);
                 throw new SanityDeserializationException("Failed to deserialize Sanity response", preview, requestUri, ex);
             }
-        }
 
         var httpEx = new SanityHttpException($"Sanity request failed with HTTP status {response.StatusCode}: {response.ReasonPhrase ?? ""}")
         {
@@ -243,12 +215,31 @@ public class SanityClient
         throw httpEx;
     }
 
+    private void LogHttpResponseContent(string content)
+    {
+        if (!_options.Debug) return;
+        var toLog = content;
+        try
+        {
+            // Try to pretty-print JSON responses for easier debugging
+            // If parsing fails, fall back to the original content
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                var token = JToken.Parse(content);
+                toLog = token.ToString(Formatting.Indented);
+            }
+        }
+        catch
+        {
+            // Ignore parsing errors – keep raw content in logs
+        }
+
+        _logger?.LogDebug("Http response: {Content}", toLog);
+    }
+
     private static string Truncate(string? value, int maxLength)
     {
-        if (value == null)
-        {
-            return string.Empty;
-        }
+        if (value == null) return string.Empty;
         return value.Length <= maxLength ? value : value[..maxLength];
     }
 }

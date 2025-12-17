@@ -27,14 +27,9 @@ public abstract class SanityDocumentSet
 
 public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc>
 {
-    public IQueryProvider Provider { get; private set; }
-    public Expression Expression { get; private set; }
-
-    public int MaxNestingLevel { get; private set; }
-
-    /// <summary> 
-    /// This constructor is called by the client to create the data source. 
-    /// </summary> 
+    /// <summary>
+    ///     The client calls this constructor to create the data source.
+    /// </summary>
     public SanityDocumentSet(SanityOptions options, int maxNestingLevel)
     {
         MaxNestingLevel = maxNestingLevel;
@@ -51,113 +46,94 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
         Expression = Expression.Constant(this);
     }
 
-    /// <summary> 
-    /// This constructor is called by Provider.CreateQuery(). 
+    /// <summary>
+    ///     This constructor is called by Provider.CreateQuery().
     /// </summary>
     /// <param name="provider"></param>
     /// <param name="expression"></param>
     public SanityDocumentSet(SanityQueryProvider provider, Expression expression)
     {
         Context = provider.Context;
-        if (provider == null)
-        {
-            throw new ArgumentNullException("provider");
-        }
 
-        if (expression == null)
-        {
-            throw new ArgumentNullException("expression");
-        }
+        if (expression == null) throw new ArgumentNullException(nameof(expression));
 
-        if (!typeof(IQueryable<TDoc>).IsAssignableFrom(expression.Type))
-        {
-            throw new ArgumentOutOfRangeException("expression");
-        }
+        if (!typeof(IQueryable<TDoc>).IsAssignableFrom(expression.Type)) throw new ArgumentOutOfRangeException(nameof(expression));
 
-        Provider = provider;
+        Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Expression = expression;
     }
 
-    public Type ElementType
+    public int MaxNestingLevel { get; }
+
+    public SanityMutationBuilder<TDoc> Mutations => Context.Mutations.For<TDoc>();
+    public IQueryProvider Provider { get; }
+    public Expression Expression { get; private set; }
+
+    public Type ElementType => typeof(TDoc);
+
+    public IEnumerator<TDoc> GetEnumerator()
     {
-        get { return typeof(TDoc); }
+        var results = Provider.Execute<IEnumerable<TDoc>>(Expression) ?? [];
+        return FilterResults(results).GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return (Provider.Execute<IEnumerable>(Expression) ?? new object[] { }).GetEnumerator();
     }
 
     public async Task<IEnumerable<TDoc>> ExecuteAsync(CancellationToken cancellationToken = default)
     {
-        var results = (await ((SanityQueryProvider)Provider).ExecuteAsync<IEnumerable<TDoc>>(Expression, cancellationToken).ConfigureAwait(false)) ??
+        var results = await ((SanityQueryProvider)Provider).ExecuteAsync<IEnumerable<TDoc>>(Expression, cancellationToken).ConfigureAwait(false) ??
                       [];
         return FilterResults(results);
     }
 
     public async Task<TDoc> ExecuteSingleAsync(CancellationToken cancellationToken = default)
     {
-        var result = (await ((SanityQueryProvider)Provider).ExecuteAsync<TDoc>(Expression, cancellationToken).ConfigureAwait(false));
+        var result = await ((SanityQueryProvider)Provider).ExecuteAsync<TDoc>(Expression, cancellationToken).ConfigureAwait(false);
         return result;
     }
 
     public async Task<int> ExecuteCountAsync(CancellationToken cancellationToken = default)
     {
         var countMethod = TypeSystem.GetMethod(nameof(Queryable.Count)).MakeGenericMethod(typeof(TDoc));
-        var exp = Expression.Call(null,countMethod, Expression);
-        return (await ((SanityQueryProvider)Provider).ExecuteAsync<int>(exp, cancellationToken).ConfigureAwait(false));
-            
+        var exp = Expression.Call(null, countMethod, Expression);
+        return await ((SanityQueryProvider)Provider).ExecuteAsync<int>(exp, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<long> ExecuteLongCountAsync(CancellationToken cancellationToken = default)
     {
         var countMethod = TypeSystem.GetMethod(nameof(Queryable.LongCount)).MakeGenericMethod(typeof(TDoc));
         var exp = Expression.Call(null, countMethod, Expression);
-        return (await ((SanityQueryProvider)Provider).ExecuteAsync<long>(exp, cancellationToken).ConfigureAwait(false));
-
+        return await ((SanityQueryProvider)Provider).ExecuteAsync<long>(exp, cancellationToken).ConfigureAwait(false);
     }
 
     public SanityDocumentSet<TDoc> Include<TProperty>(Expression<Func<TDoc, TProperty>> property)
     {
         var methodInfo = typeof(SanityDocumentSetExtensions).GetMethods().FirstOrDefault(m => m.Name.StartsWith("Include") && m.GetParameters().Length == 2);
-        if (methodInfo == null)
-        {
-            throw new InvalidOperationException("Include method overload not found.");
-        }
+        if (methodInfo == null) throw new InvalidOperationException("Include method overload not found.");
         var includeMethod = methodInfo.MakeGenericMethod(typeof(TDoc), typeof(TProperty));
         var exp = Expression.Call(null, includeMethod, Expression, property);
         Expression = exp;
-        return this;           
+        return this;
     }
 
     public SanityDocumentSet<TDoc> Include<TProperty>(Expression<Func<TDoc, TProperty>> property, string sourceName)
     {
         var methodInfo = typeof(SanityDocumentSetExtensions).GetMethods().FirstOrDefault(m => m.Name.StartsWith("Include") && m.GetParameters().Length == 3);
-        if (methodInfo == null)
-        {
-            throw new InvalidOperationException("Include method overload with sourceName not found.");
-        }
+        if (methodInfo == null) throw new InvalidOperationException("Include method overload with sourceName not found.");
         var includeMethod = methodInfo.MakeGenericMethod(typeof(TDoc), typeof(TProperty));
         var exp = Expression.Call(null, includeMethod, Expression, property, Expression.Constant(sourceName));
         Expression = exp;
         return this;
-
-    }
-
-    public IEnumerator<TDoc> GetEnumerator()
-    {
-        var results = ((Provider.Execute<IEnumerable<TDoc>>(Expression)) ?? []);
-        return FilterResults(results).GetEnumerator();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return ((Provider.Execute<IEnumerable>(Expression)) ?? new object[] { }).GetEnumerator();
     }
 
     protected virtual IEnumerable<TDoc> FilterResults(IEnumerable<TDoc> results)
     {
         //TODO: Consider merging additions / updates with data source results
         // A full implementation would also require reevaluating ordering and slicing on client side...
-        foreach (var item in results)
-        {
-            yield return item;
-        }
+        foreach (var item in results) yield return item;
     }
 
     public TDoc Get(string id)
@@ -169,13 +145,4 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
     {
         return await this.Where(d => d.SanityId() == id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
-
-    public SanityMutationBuilder<TDoc> Mutations
-    {
-        get
-        {
-            return Context.Mutations.For<TDoc>();
-        }
-    }
-
 }

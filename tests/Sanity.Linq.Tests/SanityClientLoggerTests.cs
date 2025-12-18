@@ -39,9 +39,10 @@ public class SanityClientLoggerTests
 
         Assert.Contains(logger.Messages, m =>
             m.level == LogLevel.Debug &&
-            m.message.StartsWith("Http response: ") &&
-            m.message.Contains("\"value\": 42") && // pretty-printed has a space after colon
-            m.message.Contains("\n")); // pretty-printed contains newlines
+            m.message.Contains("\"response\":") &&
+            m.message.Contains("\"content\":") &&
+            m.message.Contains("\"value\": 42") &&
+            !m.message.Contains("\n"));
     }
 
     [Fact]
@@ -81,8 +82,12 @@ public class SanityClientLoggerTests
             // Ignore deserialization error; we're testing logging behavior only
         }
 
-        Assert.Contains(logger.Messages, m => m.level == LogLevel.Debug && m.message.Contains(raw));
-        Assert.DoesNotContain(logger.Messages, m => m.level == LogLevel.Debug && m.message.Contains("\n"));
+        Assert.Contains(logger.Messages, m =>
+            m.level == LogLevel.Debug &&
+            m.message.Contains("\"response\":") &&
+            m.message.Contains("\"content\":") &&
+            m.message.Contains(raw) &&
+            !m.message.Contains("\n"));
     }
 
     private sealed class TestableSanityClient(SanityOptions options, ILogger logger) : SanityClient(options, null, null, null, logger)

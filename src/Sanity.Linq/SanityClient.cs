@@ -32,7 +32,13 @@ public class SanityClient
     private HttpClient _httpClient = null!;
     private HttpClient _httpQueryClient = null!;
 
-    public SanityClient(SanityOptions options, JsonSerializerSettings? serializerSettings = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, clientFactory, logger)
+    public SanityClient(SanityOptions options)
+        : this(options, null, null, null, null)
+    {
+    }
+
+    public SanityClient(SanityOptions options, IHttpClientFactory? clientFactory, ILogger? logger = null)
+        : this(options, null, null, clientFactory, logger)
     {
     }
 
@@ -76,8 +82,6 @@ public class SanityClient
             Query = query,
             Params = parameters
         };
-
-        if (_options.Debug) _logger?.LogDebug("Query: {Query}", oQuery.Query);
 
         var json = new StringContent(JsonConvert.SerializeObject(oQuery, Formatting.None, SerializerSettings), Encoding.UTF8, "application/json");
         var response = await _httpQueryClient.PostAsync($"data/query/{WebUtility.UrlEncode(_options.Dataset)}", json, cancellationToken).ConfigureAwait(false);
@@ -183,9 +187,7 @@ public class SanityClient
 
     protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response)
     {
-        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-        LogHttpResponseContent(content);
+        var content = await response.GetResponseContentAndDebugAsync(_options.Debug, _logger);
 
         var requestUri = response.RequestMessage?.RequestUri;
         if (response.IsSuccessStatusCode)
@@ -215,27 +217,6 @@ public class SanityClient
         throw httpEx;
     }
 
-    private void LogHttpResponseContent(string content)
-    {
-        if (!_options.Debug) return;
-        var toLog = content;
-        try
-        {
-            // Try to pretty-print JSON responses for easier debugging
-            // If parsing fails, fall back to the original content
-            if (!string.IsNullOrWhiteSpace(content))
-            {
-                var token = JToken.Parse(content);
-                toLog = token.ToString(Formatting.Indented);
-            }
-        }
-        catch
-        {
-            // Ignore parsing errors – keep raw content in logs
-        }
-
-        _logger?.LogDebug("Http response: {Content}", toLog);
-    }
 
     private static string Truncate(string? value, int maxLength)
     {

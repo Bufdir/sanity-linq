@@ -26,4 +26,19 @@ public static class StringExtensions
         //Make first letter lowercase (i.e. camelCase)
         return char.ToLowerInvariant(str[0]) + str[1..];
     }
+    
+    // Try to pretty print JSON bodies if possible
+    internal static string? ToPrettyPrintJson(this string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return s;
+        try
+        {
+            var token = JToken.Parse(s);
+            return token.ToString(Formatting.Indented);
+        }
+        catch
+        {
+            return s;
+        }
+    }
 }

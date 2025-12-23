@@ -109,9 +109,9 @@ public class SanityReferenceTypeConverterTests
         // SanityReference constructor generates a key, but let's test the converter logic
         var reference = new SanityReference<TestDocument>
         {
-            Ref = "id123"
+            Ref = "id123",
+            SanityKey = null! // Force null to test generator in converter
         };
-        reference.SanityKey = null!; // Force null to test generator in converter
 
         var sw = new StringWriter();
         _converter.WriteJson(new JsonTextWriter(sw), reference, _serializer);

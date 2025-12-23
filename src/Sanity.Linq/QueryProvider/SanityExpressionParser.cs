@@ -125,12 +125,12 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             }
 
             // Case 2: property.Contains(constant)
-            if (collectionExpr is MemberExpression && valueExpr is not MemberExpression)
+            if (collectionExpr is MemberExpression)
             {
-                var memberName = TransformOperand(collectionExpr);
                 var simplifiedValue = Evaluator.PartialEval(valueExpr);
                 if (simplifiedValue is ConstantExpression { Value: not null } c2)
                 {
+                    var memberName = TransformOperand(collectionExpr);
                     return (c2.Type == typeof(string) || c2.Type == typeof(Guid))
                         ? $"\"{c2.Value}\" in {memberName}"
                         : $"{c2.Value} in {memberName}";
@@ -595,7 +595,13 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                 return $"\"{dto.ToString("O", CultureInfo.InvariantCulture)}\"";
 
             case ConstantExpression c:
-                return $"\"{c.Value}\"";
+                if (c.Type == typeof(Guid)) return $"\"{c.Value}\"";
+                if (c.Value == null) return "null";
+                if (c.Type == typeof(string)) return $"\"{c.Value}\"";
+                return c.Value?.ToString() ?? "null";
+
+            case var p when p.NodeType == ExpressionType.Parameter:
+                return "@";
 
             default:
                 throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ");

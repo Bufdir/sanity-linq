@@ -491,7 +491,8 @@ internal sealed class SanityQueryBuilder
     {
         if (Orderings.Count > 0)
         {
-            sb.Append(" | order(" + Orderings.Aggregate((c, n) => $"{c}, {n}") + ")");
+            var distinctOrderings = Orderings.Distinct().ToList();
+            sb.Append(" | order(" + distinctOrderings.Aggregate((c, n) => $"{c}, {n}") + ")");
         }
     }
 
@@ -502,7 +503,10 @@ internal sealed class SanityQueryBuilder
             return;
         }
 
-        var expanded = ExpandIncludesInProjection(projection, Includes)
+        // Replace @ (parameter reference) with ... (spread operator) for full entity selection
+        var normalized = projection == "@" ? SanityConstants.SPREAD_OPERATOR : projection;
+
+        var expanded = ExpandIncludesInProjection(normalized, Includes)
             .Replace($"{{{SanityConstants.SPREAD_OPERATOR}}}", "");
 
         if (expanded == $"{{{SanityConstants.SPREAD_OPERATOR}}}")

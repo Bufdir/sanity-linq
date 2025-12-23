@@ -47,8 +47,8 @@ public class SanityReferenceTypeConverter : JsonConverter
 
         if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
         if (typeProp != null) typeProp.SetValue(res, "reference");
-        if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key"));
-        if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak"));
+        if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key")?.ToString());
+        if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak")?.ToObject<bool?>());
         if (valueProp != null) valueProp.SetValue(res, serializer.Deserialize(new StringReader(obj.ToString()), elemType));
         return res;
         // Unable to deserialize

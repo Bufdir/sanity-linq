@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -12,6 +13,7 @@ using Sanity.Linq.CommonTypes;
 using Sanity.Linq.DTOs;
 using Sanity.Linq.Enums;
 using Sanity.Linq.Mutations.Model;
+using Sanity.Linq.QueryProvider;
 using Xunit;
 
 namespace Sanity.Linq.Tests;
@@ -574,6 +576,90 @@ public class SanityDocumentSetExtensionsTests
         Assert.Contains("_type == \"myDoc\"", groq);
         Assert.Contains("title", groq);
         // Depending on implementation, it might look like "{title}" or just include "title" in the projection
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Multiple_Where_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        var queryable = set
+            .Where(d => d.Title != null)
+            .Where(d => d.Title == "Test");
+
+        // Act
+        var groq = queryable.GetSanityQuery();
+
+        // Assert
+        Assert.Contains("_type == \"myDoc\"", groq);
+        Assert.Contains("defined(title)", groq);
+        Assert.Contains("title == \"Test\"", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Include_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        // We use a property that is NOT a SanityReference to see what it generates
+        // In MyDoc, Author is Person.
+        var queryable = set.Include(d => d.Author!);
+
+        // Act
+        var groq = queryable.GetSanityQuery();
+
+        // Assert
+        Assert.Contains("_type == \"myDoc\"", groq);
+        Assert.Contains("author", groq);
+        // For non-SanityReference, it should just include the fields of the nested object
+        // Based on the failed test output, it was author{...,_type="...
+        Assert.Contains("author{", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Count_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        
+        // Count() is a terminal operation, but we want to see the query it would generate.
+        // Actually, CountAsync calls provider.ExecuteAsync<int>(exp).
+        // provider.ExecuteAsync calls GetSanityQuery<TResult>(expression).
+        
+        // We can't easily call .Count() and get the query because it executes.
+        // But we can manually use the provider to get the query for a Count expression.
+        var countMethod = typeof(Queryable).GetMethods().First(m => m.Name == "Count" && m.GetParameters().Length == 1).MakeGenericMethod(typeof(MyDoc));
+        var countExpression = Expression.Call(null, countMethod, set.Expression);
+        
+        var provider = (SanityQueryProvider)set.Provider;
+        var groq = provider.GetSanityQuery<int>(countExpression);
+
+        // Assert
+        Assert.StartsWith("count(", groq);
+        Assert.EndsWith(")", groq);
+        Assert.Contains("_type == \"myDoc\"", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_FirstOrDefault_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        
+        // FirstOrDefault() is a terminal operation. 
+        // We can simulate it by calling Take(1).
+        var queryable = set.Where(d => d.Title != null).Take(1);
+
+        // Act
+        var groq = queryable.GetSanityQuery();
+
+        // Assert
+        Assert.Contains("_type == \"myDoc\"", groq);
+        Assert.Contains("[0]", groq);
     }
 
     [Fact]

@@ -1,9 +1,7 @@
-﻿using System;
-using System.Net;
+﻿using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Sanity.Linq;
 using Sanity.Linq.Exceptions;
 using Xunit;
 
@@ -85,10 +83,8 @@ public class SanityClientResponseTests
         [JsonProperty("value")] public int Value { get; set; }
     }
 
-    private sealed class TestableSanityClient : SanityClient
+    private sealed class TestableSanityClient(SanityOptions options) : SanityClient(options)
     {
-        public TestableSanityClient(SanityOptions options) : base(options) { }
-
         public Task<T> InvokeHandleAsync<T>(HttpResponseMessage response)
         {
             return HandleHttpResponseAsync<T>(response);

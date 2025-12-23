@@ -19,7 +19,7 @@ internal static class TypeSystem
             .Single(mi => (mi.GetParameters().Length == parameterCount + 1)
                           && ((predicate == null) || predicate(mi)));
 
-    private static Type? FindIEnumerable(Type seqType)
+    private static Type? FindIEnumerable(Type? seqType)
     {
         if (seqType == null || seqType == typeof(string))
             return null;

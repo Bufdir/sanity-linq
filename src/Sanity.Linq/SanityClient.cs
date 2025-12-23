@@ -33,7 +33,7 @@ public class SanityClient
     private HttpClient _httpQueryClient = null!;
 
     public SanityClient(SanityOptions options)
-        : this(options, null, null, null, null)
+        : this(options, null, null, null)
     {
     }
 
@@ -216,7 +216,6 @@ public class SanityClient
         };
         throw httpEx;
     }
-
 
     private static string Truncate(string? value, int maxLength)
     {

@@ -2,7 +2,7 @@
 
 namespace Sanity.Linq.QueryProvider;
 
-internal sealed class SanityQueryBuilder
+internal sealed partial class SanityQueryBuilder
 {
     private readonly Dictionary<string, string> _groqTokens = new()
     {
@@ -590,7 +590,7 @@ internal sealed class SanityQueryBuilder
         json = json.Replace("{", ":{").TrimStart(':');
 
         // Replace variable names with valid JSON (e.g., convert myField to "myField": true)
-        var reVariables = new Regex("(,|{)([^\"}:,]+)(,|})");
+        var reVariables = MyRegex();
         var reMatches = reVariables.Matches(json);
         while (reMatches.Count > 0)
         {
@@ -648,4 +648,12 @@ internal sealed class SanityQueryBuilder
         sb.Insert(0, AggregateFunction + "(");
         sb.Append(')');
     }
+
+#if NET7_0_OR_GREATER
+    [GeneratedRegex("(,|{)([^\"}:,]+)(,|})")]
+    internal static partial Regex MyRegex();
+#else
+    private static readonly Regex _myRegex = new Regex("(,|{)([^\"}:,]+)(,|})", RegexOptions.Compiled);
+    internal static Regex MyRegex() => _myRegex;
+#endif
 }

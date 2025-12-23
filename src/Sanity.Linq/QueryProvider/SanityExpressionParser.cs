@@ -113,7 +113,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string HandleContains(MethodCallExpression e)
     {
-        // Try resolve standard shapes: instance and static Contains
+        // Try to resolve standard shapes: instance and static Contains
         if (TryGetParts(e, out var collectionExpr, out var valueExpr) && collectionExpr != null && valueExpr != null)
         {
             // Case 1: enumerable constant/list: titles.Contains(p.Title)

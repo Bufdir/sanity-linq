@@ -12,6 +12,11 @@ internal sealed partial class SanityQueryBuilder
         { SanityConstants.COLON, "__0004__" },
         { SanityConstants.SPREAD_OPERATOR, "__0005__" },
         { SanityConstants.ARRAY_INDICATOR, "__0006__" },
+        { "[", "__0007__" },
+        { "]", "__0008__" },
+        { "(", "__0009__" },
+        { ")", "__0010__" },
+        { "@", "__0011__" },
     };
 
     public string AggregateFunction { get; set; } = "";
@@ -63,7 +68,7 @@ internal sealed partial class SanityQueryBuilder
         {
             var fields = GetPropertyProjectionList(propertyType.GetGenericArguments()[0], nestingLevel, maxNestingLevel);
             var fieldList = JoinComma(fields);
-            return $"{fieldRef}->{{ {fieldList} }}";
+            return $"{fieldRef}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
         }
 
         // CASE 2: IEnumerable<SanityReference<T>>
@@ -71,7 +76,7 @@ internal sealed partial class SanityQueryBuilder
         {
             var fields = GetPropertyProjectionList(refElement!, nestingLevel, maxNestingLevel);
             var fieldList = JoinComma(fields);
-            return $"{fieldRef}[]->{{{fieldList}}}";
+            return $"{fieldRef}[][defined(@)]{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
         }
 
         var nestedProperties = propertyType.GetProperties();
@@ -98,9 +103,10 @@ internal sealed partial class SanityQueryBuilder
             var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
             var nsrElementType = nsr.PropertyType.GetGenericArguments()[0];
             var nestedFields = GetPropertyProjectionList(nsrElementType, nestingLevel + 1, maxNestingLevel);
+            var nestedFieldList = JoinComma(nestedFields);
             var fieldList = fields
                 .Select(f => f == propertyName
-                    ? $"{propertyName}->{(nestedFields.Count > 0 ? ("{" + JoinComma(nestedFields) + "}") : "")}"
+                    ? $"{propertyName}{{{nestedFieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + nestedFieldList + "}"}}}"
                     : f)
                 .Aggregate((c, n) => c + "," + n);
             return $"{fieldRef}{{{fieldList}}}";
@@ -114,9 +120,10 @@ internal sealed partial class SanityQueryBuilder
             var propertyName = listProp.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName ?? listProp.Name.ToCamelCase();
             var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
             var nestedFields = GetPropertyProjectionList(elemType, nestingLevel + 1, maxNestingLevel);
+            var nestedFieldList = JoinComma(nestedFields);
             var fieldList = fields
                 .Select(f => f == propertyName
-                    ? $"{propertyName}[]->{(nestedFields.Count > 0 ? ("{" + JoinComma(nestedFields) + "}") : "")}"
+                    ? $"{propertyName}[][defined(@)]{{{nestedFieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + nestedFieldList + "}"}}}"
                     : f)
                 .Aggregate((c, n) => c + "," + n);
             return $"{fieldRef}{{{fieldList}}}";
@@ -137,11 +144,11 @@ internal sealed partial class SanityQueryBuilder
             var fields = GetPropertyProjectionList(enumerableType!, nestingLevel, maxNestingLevel);
             if (fields.Count <= 0)
             {
-                return $"{fieldRef}[]->";
+                return $"{fieldRef}[][defined(@)]{{{SanityConstants.SPREAD_OPERATOR},{SanityConstants.DEREFERENCING_SWITCH + "{" + SanityConstants.SPREAD_OPERATOR + "}"}}}";
             }
 
             var fieldList = JoinComma(fields);
-            return $"{fieldRef}[]{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+            return $"{fieldRef}[][defined(@)]{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
         }
 
         // Non-enumerable object fallback

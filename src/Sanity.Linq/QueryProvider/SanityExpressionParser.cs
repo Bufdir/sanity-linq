@@ -255,13 +255,29 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     private string HandleInclude(MethodCallExpression e)
     {
         // Arg 1: Field to join
-        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression { Body: MemberExpression { Member.MemberType: MemberTypes.Property } } l })
+        Expression? lambdaBody = null;
+        if (e.Arguments[1] is UnaryExpression { Operand: LambdaExpression l1 })
+        {
+            lambdaBody = l1.Body;
+        }
+
+        if (lambdaBody is MethodCallExpression { Method.Name: "SelectMany" } mce)
+        {
+            lambdaBody = mce.Arguments[0];
+        }
+
+        if (lambdaBody is MethodCallExpression { Method.Name: "OfType" } mceOfType)
+        {
+            lambdaBody = mceOfType.Arguments[0];
+        }
+
+        if (lambdaBody is not MemberExpression { Member.MemberType: MemberTypes.Property })
         {
             throw new Exception("Joins can only be applied to properties.");
         }
 
-        var fieldPath = TransformOperand(l.Body);
-        var propertyType = l.Body.Type;
+        var fieldPath = TransformOperand(lambdaBody);
+        var propertyType = lambdaBody.Type;
         var targetName = fieldPath.Split('.', '>').LastOrDefault() ?? string.Empty;
         var sourceName = targetName;
 

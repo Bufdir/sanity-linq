@@ -45,7 +45,7 @@ public class SanityQueryBuilderEdgeCasesTests
     {
         var s = CallGetJoinProjection("refs", "refs", typeof(List<SanityReference<Simple>>));
         // No spaces are inserted in this case
-        Assert.Equal("refs[]->{...}", s);
+        Assert.Contains("refs[][defined(@)]", s);
     }
 
     [Fact]

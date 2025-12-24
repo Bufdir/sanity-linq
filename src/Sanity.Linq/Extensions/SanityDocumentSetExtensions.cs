@@ -112,7 +112,7 @@ public static class SanityDocumentSetExtensions
             };
         }
 
-        public async Task<T> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+        public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
         {
             return source switch
             {
@@ -134,7 +134,7 @@ public static class SanityDocumentSetExtensions
             };
         }
 
-        public async Task<T> ExecuteSingleAsync(CancellationToken cancellationToken = default)
+        public async Task<T?> ExecuteSingleAsync(CancellationToken cancellationToken = default)
         {
             return source switch
             {

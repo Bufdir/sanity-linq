@@ -32,24 +32,31 @@ public class SanityReferenceTypeConverter : JsonConverter
             return null;
         }
 
-        if (obj.GetValue("_ref") != null)
-        {
-            // Normal reference
-            return obj.ToObject(type);
-        }
-
-        var res = Activator.CreateInstance(type);
+        var res = (SanityObject)Activator.CreateInstance(type)!;
         var refProp = type.GetProperty(nameof(SanityReference<>.Ref));
         var typeProp = type.GetProperty(nameof(SanityReference<>.SanityType));
         var keyProp = type.GetProperty(nameof(SanityReference<>.SanityKey));
         var weakProp = type.GetProperty(nameof(SanityReference<>.Weak));
         var valueProp = type.GetProperty(nameof(SanityReference<>.Value));
 
-        if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
-        if (typeProp != null) typeProp.SetValue(res, "reference");
+        if (refProp != null) refProp.SetValue(res, obj.GetValue("_ref")?.ToString() ?? obj.GetValue("_id")?.ToString());
+        if (typeProp != null) typeProp.SetValue(res, obj.GetValue("_type")?.ToString());
         if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key")?.ToString());
         if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak")?.ToObject<bool?>());
-        if (valueProp != null) valueProp.SetValue(res, serializer.Deserialize(new StringReader(obj.ToString()), elemType));
+
+        // Decide if we should populate Value
+        // If it's dereferenced, it usually has more fields than the basic reference ones.
+        // Also if _ref is missing but it's a JObject, it's likely a dereferenced document.
+        bool isDereferenced = obj.Properties().Any(p =>
+            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id");
+
+        if (isDereferenced && valueProp != null)
+        {
+            using (var subReader = obj.CreateReader())
+            {
+                valueProp.SetValue(res, serializer.Deserialize(subReader, elemType));
+            }
+        }
         return res;
         // Unable to deserialize
     }

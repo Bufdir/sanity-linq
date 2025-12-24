@@ -35,7 +35,8 @@ public class SanityQueryBuilderTests
 
         // Should start with star selection and contain expanded include for author
         Assert.StartsWith("*{", result);
-        Assert.Contains("author->", result);
+        Assert.Contains("author", result);
+        Assert.Contains("_type=='reference'=>@->", result);
         // Should contain ordering and slice [2..4]
         Assert.Contains("| order(title asc)", result);
         Assert.EndsWith(" [2..4]", result);
@@ -62,8 +63,9 @@ public class SanityQueryBuilderTests
         // Invoke private ExpandIncludesInProjection via reflection
         var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
         var expanded = (string)mi.Invoke(builder, new object[] { "author", paramIncludes })!;
-
-        Assert.Contains("author->", expanded);
+        
+        Assert.Contains("author", expanded);
+        Assert.Contains("_type=='reference'=>@->", expanded);
     }
 
     [Fact]
@@ -81,7 +83,30 @@ public class SanityQueryBuilderTests
     {
         var proj = CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>));
         // Note: formatting has a space after the opening brace in this case
-        Assert.Equal("author->{ ... }", proj);
+        Assert.Contains("author", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_Reference_UsesDereferencingSwitch()
+    {
+        var proj = CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>));
+        
+        // Expected format: author{...,_type=='reference'=>@->{...}}
+        Assert.Contains("author{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+        // It should contain the fields (or spread) twice, once for the reference itself and once for the dereferenced object
+        Assert.Contains("...", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_IEnumerableReference_UsesDereferencingSwitchAndDefinedCheck()
+    {
+        var proj = CallGetJoinProjection("authors", "authors", typeof(List<SanityReference<Simple>>));
+        
+        // Expected format: authors[][defined(@)]{...,_type=='reference'=>@->{...}}
+        Assert.Contains("authors[][defined(@)]", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
     }
 
     private static string CallGetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel = 0, int maxNestingLevel = 2)

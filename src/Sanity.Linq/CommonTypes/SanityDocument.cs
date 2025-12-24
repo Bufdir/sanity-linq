@@ -22,8 +22,7 @@ public class SanityDocument
         SanityType = GetType().GetSanityTypeName();
     }
 
-    [JsonProperty("_id")]
-    public string? Id { get; set; }
+    [JsonProperty("_id")] public string Id { get; set; } = null!;
 
     [JsonProperty("_type")]
     public string SanityType { get; set; }

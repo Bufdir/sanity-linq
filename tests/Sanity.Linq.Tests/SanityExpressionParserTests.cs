@@ -50,4 +50,45 @@ public class SanityExpressionParserTests
         // Should include predicate on title
         Assert.Contains("title == \"Hello\"", groq, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void GetSanityQuery_With_Include_SelectMany_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<IncludeDoc>(context, 3);
+        
+        // Include(d => d.Refs.SelectMany(r => r))
+        var queryable = SanityDocumentSetExtensions.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(set, d => d.Refs!.SelectMany(r => new[] { r }));
+
+        // Act
+        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+
+        // Assert
+        Assert.Contains("refs[][defined(@)]", groq);
+        Assert.Contains("_type=='reference'=>@->", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Include_OfType_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<IncludeDoc>(context, 3);
+        
+        // Include(d => d.Refs.OfType<SanityReference<IncludeDoc>>())
+        var queryable = SanityDocumentSetExtensions.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(set, d => d.Refs!.OfType<SanityReference<IncludeDoc>>());
+
+        // Act
+        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+
+        // Assert
+        Assert.Contains("refs[][defined(@)]", groq);
+        Assert.Contains("_type=='reference'=>@->", groq);
+    }
+
+    private sealed class IncludeDoc : SanityDocument
+    {
+        public List<SanityReference<IncludeDoc>>? Refs { get; set; }
+    }
 }

@@ -144,6 +144,54 @@ public class SanityDocumentSetExtensionsTests
     }
 
     [Fact]
+    public async Task ExecuteSingleAsync_With_FirstOrDefault_Returns_Single_Element()
+    {
+        // Arrange
+        var testClient = new TestSanityClient
+        {
+            FetchResult = new MyDoc { Title = "First" }
+        };
+
+        var context = CreateContext(testClient);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+
+        // Act
+        var result = await set.FirstOrDefaultAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("First", result.Title);
+        Assert.True(testClient.FetchAsyncCalled);
+        
+        // Verify that the query sent to the client had [0]
+        Assert.EndsWith("[0]", testClient.LastQuery.Trim());
+    }
+
+    [Fact]
+    public async Task ExecuteSingleAsync_With_Take_One_FirstOrDefault_Returns_Single_Element()
+    {
+        // Arrange
+        var testClient = new TestSanityClient
+        {
+            FetchResult = new MyDoc { Title = "FirstTake" }
+        };
+
+        var context = CreateContext(testClient);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+
+        // Act
+        var result = await set.Take(1).FirstOrDefaultAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("FirstTake", result.Title);
+        Assert.True(testClient.FetchAsyncCalled);
+
+        // Take(1).FirstOrDefault() should still result in [0]
+        Assert.EndsWith("[0]", testClient.LastQuery.Trim());
+    }
+
+    [Fact]
     public async Task CountAsync_Returns_Count()
     {
         // Arrange
@@ -852,10 +900,12 @@ public class SanityDocumentSetExtensionsTests
         public bool CommitMutationsCalled { get; private set; }
         public bool UploadImageCalled { get; private set; }
         public bool UploadFileCalled { get; private set; }
+        public string LastQuery { get; private set; } = string.Empty;
 
         public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
         {
             FetchAsyncCalled = true;
+            LastQuery = query;
             return Task.FromResult(new SanityQueryResponse<TResult> { Result = (TResult)FetchResult! });
         }
 

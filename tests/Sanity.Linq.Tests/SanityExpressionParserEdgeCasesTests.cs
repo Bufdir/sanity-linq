@@ -72,18 +72,97 @@ public class SanityExpressionParserEdgeCasesTests
     }
 
     [Fact]
-    public void Where_TitleStartsWith_UsesMatchWildcard()
+    public void Where_NestedPropertyEqualsNull_EmitsDefinedOrNullPattern()
     {
         var context = CreateContext();
         var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
 
-        var queryable = set.Where(d => d.Title!.StartsWith("Hel"));
+        var queryable = set.Where(d => d.Nested!.SubTitle == null);
         var provider = (SanityQueryProvider)queryable.Provider;
 
         var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
 
-        // Pattern: title match "Hel*"
-        Assert.Contains("title match \"Hel*\"", groq, StringComparison.Ordinal);
+        // Pattern: (!(defined(nested.subTitle)) || nested.subTitle == null)
+        Assert.Contains("!(defined(nested.subTitle))", groq, StringComparison.Ordinal);
+        Assert.Contains("nested.subTitle == null", groq, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Where_NestedPropertyNotEqualsNull_EmitsDefinedAndNotNullPattern()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
+
+        var queryable = set.Where(d => d.Nested!.SubTitle != null);
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
+
+        // Pattern: (defined(nested.subTitle) && nested.subTitle != null)
+        Assert.Contains("defined(nested.subTitle)", groq, StringComparison.Ordinal);
+        Assert.Contains("nested.subTitle != null", groq, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Take_One_Produces_Single_Index_Slice()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
+
+        var queryable = set.Take(1);
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
+
+        // Should use [0] instead of [0..0]
+        Assert.EndsWith("[0]", groq.Trim());
+    }
+
+    [Fact]
+    public void Skip_And_Take_One_Produces_Single_Index_Slice()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
+
+        var queryable = set.Skip(5).Take(1);
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
+
+        // Should use [5] instead of [5..5]
+        Assert.EndsWith("[5]", groq.Trim());
+    }
+
+    [Fact]
+    public void Take_Multiple_Produces_Range_Slice()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
+
+        var queryable = set.Take(5);
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
+
+        // Should use [0..4]
+        Assert.EndsWith("[0..4]", groq.Trim());
+    }
+
+    [Fact]
+    public void Where_IsNullOrEmpty_TranslatesToComplexPattern()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, maxNestingLevel: 3);
+
+        var queryable = set.Where(d => string.IsNullOrEmpty(d.Title));
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
+
+        // Pattern: title == null || title == "" || !(defined(title))
+        Assert.Contains("title == null", groq);
+        Assert.Contains("title == \"\"", groq);
+        Assert.Contains("!(defined(title))", groq);
     }
 
     private static SanityDataContext CreateContext()
@@ -102,6 +181,12 @@ public class SanityExpressionParserEdgeCasesTests
     {
         public string[]? Tags { get; set; }
         public string? Title { get; set; }
+        public NestedDoc? Nested { get; set; }
+    }
+
+    private sealed class NestedDoc
+    {
+        public string? SubTitle { get; set; }
     }
 
     // Note: Tests for List.Contains(property) are covered elsewhere in the suite

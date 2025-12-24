@@ -36,7 +36,21 @@ public class SanityReferenceTypeConverterTests
     }
 
     [Fact]
-    public void ReadJson_ShouldDeserializeNormalReference()
+    public void ReadJson_ShouldDeserializeExpandedReferenceUsingId()
+    {
+        var json = @"{ ""_id"": ""id123"", ""_type"": ""testDoc"", ""name"": ""Test Name"" }";
+        var reader = new JsonTextReader(new StringReader(json));
+
+        var result = _converter.ReadJson(reader, typeof(SanityReference<TestDocument>), null, _serializer) as SanityReference<TestDocument>;
+
+        Assert.NotNull(result);
+        Assert.Equal("id123", result.Ref);
+        Assert.NotNull(result.Value);
+        Assert.Equal("Test Name", result.Value.Name);
+    }
+
+    [Fact]
+    public void ReadJson_ShouldDeserializeReferenceUsingRef()
     {
         var json = @"{ ""_ref"": ""id123"", ""_type"": ""reference"" }";
         var reader = new JsonTextReader(new StringReader(json));
@@ -45,6 +59,20 @@ public class SanityReferenceTypeConverterTests
 
         Assert.NotNull(result);
         Assert.Equal("id123", result.Ref);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public void ReadJson_ShouldNotPopulateValueIfOnlyBasicFieldsPresent()
+    {
+        var json = @"{ ""_id"": ""id123"", ""_type"": ""reference"", ""_key"": ""key456"", ""_weak"": true, ""_rev"": ""rev789"" }";
+        var reader = new JsonTextReader(new StringReader(json));
+
+        var result = _converter.ReadJson(reader, typeof(SanityReference<TestDocument>), null, _serializer) as SanityReference<TestDocument>;
+
+        Assert.NotNull(result);
+        Assert.Equal("id123", result.Ref);
+        Assert.Null(result.Value);
     }
 
     [Fact]

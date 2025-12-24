@@ -89,7 +89,7 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
         return FilterResults(results);
     }
 
-    public async Task<TDoc> ExecuteSingleAsync(CancellationToken cancellationToken = default)
+    public async Task<TDoc?> ExecuteSingleAsync(CancellationToken cancellationToken = default)
     {
         var result = await ((SanityQueryProvider)Provider).ExecuteAsync<TDoc>(Expression, cancellationToken).ConfigureAwait(false);
         return result;
@@ -136,12 +136,12 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
         foreach (var item in results) yield return item;
     }
 
-    public TDoc Get(string id)
+    public TDoc? Get(string id)
     {
         return GetAsync(id).GetAwaiter().GetResult();
     }
 
-    public async Task<TDoc> GetAsync(string id, CancellationToken cancellationToken = default)
+    public async Task<TDoc?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
         return await this.Where(d => d.SanityId() == id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }

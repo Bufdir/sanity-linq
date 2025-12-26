@@ -24,8 +24,8 @@ using Sanity.Linq.Mutations;
 namespace Sanity.Linq;
 
 /// <summary>
-/// Linq-to-Sanity Data Context.
-/// Handles initialization of SanityDbSets defined in inherited classes.
+///     Linq-to-Sanity Data Context.
+///     Handles initialization of SanityDbSets defined in inherited classes.
 /// </summary>
 public class SanityDataContext
 {
@@ -33,16 +33,18 @@ public class SanityDataContext
     private readonly object _dsLock = new();
 
     /// <summary>
-    /// Create a new SanityDbContext using the specified options.
+    ///     Create a new SanityDbContext using the specified options.
     /// </summary>
     /// <param name="options"></param>
     /// <param name="serializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
-    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory, logger) { }
+    public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory, logger)
+    {
+    }
 
     /// <summary>
-    /// Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
+    ///     Create a new SanityDbContext using the explicitly specified JsonSerializerSettings.
     /// </summary>
     /// <param name="options"></param>
     /// <param name="serializerSettings"></param>
@@ -51,10 +53,7 @@ public class SanityDataContext
     /// <param name="clientFactory"></param>
     public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null)
     {
-        if (options == null)
-        {
-            throw new ArgumentNullException(nameof(options));
-        }
+        if (options == null) throw new ArgumentNullException(nameof(options));
 
         var defaultSerializerSettings = new JsonSerializerSettings
         {
@@ -71,11 +70,11 @@ public class SanityDataContext
     }
 
     /// <summary>
-    /// Create a new SanityDbContext using the specified options.
+    ///     Create a new SanityDbContext using the specified options.
     /// </summary>
     /// <param name="options"></param>
     /// <param name="isShared">Indicates that the context can be used by multiple SanityDocumentSets</param>
-    internal SanityDataContext(SanityOptions options, bool isShared) : this(options, serializerSettings: null, deserializerSettings: null, htmlBuilderOptions: null, clientFactory: null)
+    internal SanityDataContext(SanityOptions options, bool isShared) : this(options, null, null, null, clientFactory: null)
     {
         IsShared = isShared;
     }
@@ -96,7 +95,7 @@ public class SanityDataContext
     }
 
     /// <summary>
-    /// Sends all changes registered on Document sets to Sanity as a transactional set of mutations.
+    ///     Sends all changes registered on Document sets to Sanity as a transactional set of mutations.
     /// </summary>
     /// <param name="returnIds"></param>
     /// <param name="returnDocuments"></param>
@@ -111,7 +110,7 @@ public class SanityDataContext
     }
 
     /// <summary>
-    /// Sends all changes registered on document sets of specified type to Sanity as a transactional set of mutations.
+    ///     Sends all changes registered on document sets of specified type to Sanity as a transactional set of mutations.
     /// </summary>
     /// <param name="returnIds"></param>
     /// <param name="returnDocuments"></param>
@@ -127,11 +126,12 @@ public class SanityDataContext
             mutations.Clear();
             return result;
         }
+
         throw new Exception($"No pending changes for document type {typeof(TDoc)}");
     }
 
     /// <summary>
-    /// Returns an IQueryable document set for specified type
+    ///     Returns an IQueryable document set for specified type
     /// </summary>
     /// <typeparam name="TDoc"></typeparam>
     /// <returns></returns>
@@ -140,11 +140,9 @@ public class SanityDataContext
         var key = $"{typeof(TDoc).FullName ?? ""}_{maxNestingLevel}";
         lock (_dsLock)
         {
-            if (!_documentSets.ContainsKey(key))
-            {
-                _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
-            }
+            if (!_documentSets.ContainsKey(key)) _documentSets[key] = new SanityDocumentSet<TDoc>(this, maxNestingLevel);
         }
+
         lock (_dsLock)
         {
             return (_documentSets[key] as SanityDocumentSet<TDoc>)!;

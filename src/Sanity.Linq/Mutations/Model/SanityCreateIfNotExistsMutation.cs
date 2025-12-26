@@ -19,15 +19,9 @@ public class SanityCreateIfNotExistsMutation : SanityMutation
 {
     public SanityCreateIfNotExistsMutation(object document)
     {
-        if (document == null)
-        {
-            throw new ArgumentNullException(nameof(document));
-        }
+        if (document == null) throw new ArgumentNullException(nameof(document));
 
-        if (!document.HasIdProperty() || !document.HasDocumentTypeProperty())
-        {
-            throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
-        }
+        if (!document.HasIdProperty() || !document.HasDocumentTypeProperty()) throw new ArgumentException("Document must have an Id field which is represented as '_id' when serialized to JSON.", nameof(document));
 
         CreateIfNotExists = document;
     }

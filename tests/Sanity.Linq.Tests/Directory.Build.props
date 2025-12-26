@@ -1,4 +1,4 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project>
-  <!-- Intentionally empty: settings centralized in tests/Directory.Build.props -->
+    <!-- Intentionally empty: settings centralized in tests/Directory.Build.props -->
 </Project>

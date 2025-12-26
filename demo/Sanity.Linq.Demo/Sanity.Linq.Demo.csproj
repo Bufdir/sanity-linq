@@ -1,17 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>Sanity.Linq.Demo</AssemblyName>
-    <RootNamespace>Sanity.Linq.Demo</RootNamespace>
-   <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>Sanity.Linq.Demo</AssemblyName>
+        <RootNamespace>Sanity.Linq.Demo</RootNamespace>
+        <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
 
-  </PropertyGroup>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Sanity.Linq\Sanity.Linq.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Sanity.Linq\Sanity.Linq.csproj"/>
+    </ItemGroup>
 
 </Project>

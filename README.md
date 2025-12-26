@@ -1,51 +1,68 @@
 # Sanity LINQ
- **A strongly-typed .Net Client** for [Sanity CMS](https://sanity.io) with support for LINQ queries, mutations, transactions, joins, projections and more...
- 
+
+**A strongly-typed .Net Client** for [Sanity CMS](https://sanity.io) with support for LINQ queries, mutations,
+transactions, joins, projections and more...
+
 [![Build status](https://oslofjord.visualstudio.com/sanity-linq/_apis/build/status/Build%20sanity-linq)](https://oslofjord.visualstudio.com/sanity-linq/_build/latest?definitionId=118) [![NuGet Version](https://img.shields.io/nuget/v/Sanity.Linq.svg)](https://www.nuget.org/packages/Sanity.Linq) [![NuGet Downloads](https://img.shields.io/nuget/dt/Sanity.Linq.svg)](https://www.nuget.org/packages/Sanity.Linq)
 
-
 ## Introduction
+
 Sanity CMS is a headless CMS available at https://sanity.io with a powerful query API, file store and CDN.
 
-Sanity LINQ was intially developed at [Oslofjord Convention Center](https://oslofjord.com) to facilitate development of .Net projects based on Sanity CMS.
+Sanity LINQ was intially developed at [Oslofjord Convention Center](https://oslofjord.com) to facilitate development of
+.Net projects based on Sanity CMS.
 
-Inspiration was drawn from the .Net client provided by [onyboy](https://github.com/onybo) at https://github.com/onybo/sanity-client.
+Inspiration was drawn from the .Net client provided by [onyboy](https://github.com/onybo)
+at https://github.com/onybo/sanity-client.
 
-The Sanity LINQ client goes beyond providing a simple HTTP client and introduces strongly typed queries, projections, mutations and joins - much in the same way as Entity Framework provides this for SQL.
+The Sanity LINQ client goes beyond providing a simple HTTP client and introduces strongly typed queries, projections,
+mutations and joins - much in the same way as Entity Framework provides this for SQL.
 
 ### Features
+
 - Strongly-typed LINQ → GROQ translation (filters, projections, joins)
 - Mutations and transactions
 - Async APIs and pagination patterns
 - Reference navigation and projection to DTOs
+- Enhanced `Contains` support (both `value in array` and `substring in string`)
+- Improved partial evaluation for complex LINQ expressions
 
 ### Supported frameworks
+
 - netstandard2.1
 - net10.0
 
 ## Documentation
 
-- Authoring Best Practices (for consumers and contributors): https://github.com/oslofjord/sanity-linq/blob/HEAD/docs/authoring-best-practices.md
+- Authoring Best Practices (for consumers and
+  contributors): https://github.com/oslofjord/sanity-linq/blob/HEAD/docs/authoring-best-practices.md
 
 ## Installation
+
 Sanity.Linq is available as a NuGet package.
 
 **Install using Package Manager:**
+
 ```
 PM> Install-Package Sanity.Linq
 ```
+
 **Install using .Net CLI:**
+
 ```
 > dotnet add package Sanity.Linq
 ```
 
 ### Release and publish (maintainers)
-- Create a release tag via GitHub Actions → "Create release tag" with input `version` like `1.2.3`. This creates `v1.2.3`.
+
+- Create a release tag via GitHub Actions → "Create release tag" with input `version` like `1.2.3`. This creates
+  `v1.2.3`.
 - Pushing the tag triggers the workflow "Publish package (GitHub Packages)", which packs and publishes version `1.2.3`.
 - Do not pass non‑SemVer values (e.g., branch names like `master`) to `PackageVersion`. For manual local pack, use:
-  - Release: `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=1.2.3 -o ./artifacts`
-  - CI prerelease (if needed): `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=0.0.0-ci.1.abcd123 -o ./artifacts`
-
+    - Release:
+      `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=1.2.3 -o ./artifacts`
+    - CI prerelease (if needed):
+      `dotnet pack src/Sanity.Linq/Sanity.Linq.csproj -c Release -p:ContinuousIntegrationBuild=true -p:PackageVersion=0.0.0-ci.1.abcd123 -o ./artifacts`
 
 ## Getting Started
 
@@ -66,12 +83,14 @@ var sanity = new SanityDataContext(options);
 ```
 
 ### 1. Basic Queries
+
 Start by defining entity classes which match documents in Sanity.
 
 
 > **Alternative 1:**
-> 
+>
 > POCO Entity with zero dependencies on Sanity Linq.
+
 ``` csharp
 // Example
 public class Category
@@ -90,9 +109,8 @@ public class Category
 }
 ```
 
-
 > **Alternative 2:**
-> 
+>
 > Create a class which inherits SanityDocument.
 
 ``` csharp
@@ -119,13 +137,22 @@ public class Post : SanityDocument
 ```
 
 Next, simply run Linq queries against the SanityDataContext:
+
 ``` csharp
 var posts = sanity.DocumentSet<Post>();
 
 var totalNumberOfPosts = await posts.CountAsync();
 var publishedToday = await posts.Where(p => p.PublishedAt > DateTime.Today).ToListAsync();
 
+// Enhanced Contains support:
+var tags = new[] { "news", "tech" };
+var filteredByTags = await posts.Where(p => tags.Contains(p.Category)).ToListAsync(); 
+// Translated to: *[_type == "post" && category in ["news", "tech"]]
+
+var searchTitle = await posts.Where(p => p.Title.Contains("Sanity")).ToListAsync();
+// Translated to: *[_type == "post" && "Sanity" in title]
 ```
+
 The LINQ queries above are respectively translated to a Sanity GROQ query by Sanity Linq:
 
 ```
@@ -135,8 +162,11 @@ count(*[_type == "post"])
 // Published today:
 *[(_type == "post") && ((publishedAt >= "2018-10-06T00:00:00.0000000+02:00"))]
 ```
+
 ### 2. Projections
+
 LINQ selections are also supported by Sanity Linq:
+
 ``` csharp
 // Returns a list of strings ordered by publish date
 var postTitles = sanity.DocumentSet<Post>()
@@ -147,9 +177,11 @@ var postTitles = sanity.DocumentSet<Post>()
 ```
 
 ### 3. Mutations
+
 Mutations such as insert, update and delete can be performed on single documents or on multiple objects using a query!
 
 **Insert document:**
+
 ``` csharp
 var author = new Author
 {
@@ -159,9 +191,13 @@ var author = new Author
 
 await sanity.DocumentSet<Author>().Create(author).CommitAsync();
 
+// Create if not exists (requires _id)
+await sanity.DocumentSet<Author>().CreateIfNotExists(author).CommitAsync();
+
 ```
 
 **Update document:**
+
 ``` csharp
 var authors = sanity.DocumentSet<Author>();
 
@@ -173,6 +209,7 @@ await authors.Update(author).CommitAsync();
 ```
 
 **Delete document:**
+
 ``` csharp
 var authors = sanity.DocumentSet<Author>();
 
@@ -183,6 +220,7 @@ await authors.DeleteById("some-guid").CommitAsync();
 ```
 
 **Delete multiple documents by query:**
+
 ``` csharp
 var posts = sanity.DocumentSet<Post>();
 
@@ -195,6 +233,7 @@ await posts.DeleteByQuery(p => p.Title.Contains("boring")).CommitAsync();
 ```
 
 **Patch document by id:**
+
 ``` csharp
 var posts = sanity.DocumentSet<Post>();
 
@@ -205,6 +244,7 @@ posts.PatchById("some-guid", p => p.Set = new { Title = "New Title" }).CommitAsy
 ```
 
 **Patch document by query:**
+
 ``` csharp
 var posts = sanity.DocumentSet<Post>();
 
@@ -217,11 +257,13 @@ posts.PatchByQuery(p => p.Title == "", p => p.Set = new { Title = "Untitled" }).
 
 ```
 
-
 ### 4. Transactions - Bulk Mutations
-The SanityDataContext keeps track of pending mutations, independent of type. To apply multiple mutations in a single transaction, simply wait with calling `CommitAsync()` until all mutations have been applied.
+
+The SanityDataContext keeps track of pending mutations, independent of type. To apply multiple mutations in a single
+transaction, simply wait with calling `CommitAsync()` until all mutations have been applied.
 
 The fluent API also allows mutations to be chained.
+
 ``` csharp
 var posts = sanity.DocumentSet<Post>();
 var authors = sanity.DocumentSet<Author>();
@@ -239,7 +281,8 @@ await sanity.CommitAsync();
 
 ```
 
-### 5. Joins 
+### 5. Joins
+
 The Sanity Linq library includes a helper class `SanityReference` which models the structure of relations in Sanity:
 
 ``` csharp
@@ -276,18 +319,22 @@ Related documents can be included in query results in several ways.
     public List<SanityReference<Category>> Categories { get; set; }
 
     ```
-  > Note that `[Include]` not only works on `SanityReference`, but also lists of references and `SanityImage`.
 
-3.  References can also be *selectively* joined, using the `Include()` extension method when querying:
-    ``` csharp
-    await sanity.DocumentSet<Post>().Include(p => p.Author).ToListAsync();
+> Note that `[Include]` not only works on `SanityReference`, but also lists of references and `SanityImage`.
 
-    ```
+3. References can also be *selectively* joined, using the `Include()` extension method when querying:
+   ``` csharp
+   await sanity.DocumentSet<Post>().Include(p => p.Author).ToListAsync();
+
+   ```
 
 ### 6. Files and Images
-The `SanityDataContext` has two predefined document sets for Files and Images. These document sets can be used to manages Sanity assets:
+
+The `SanityDataContext` has two predefined document sets for Files and Images. These document sets can be used to
+manages Sanity assets:
 
 #### Retrieving Files and Images
+
  ``` csharp
 // Get all files and images:
 var files = await sanity.Files.ToListAsync(); 
@@ -295,7 +342,9 @@ var images = await sanity.Images.ToListAsync();
  ```
 
 #### Uploading and Linking Assets
-The `Files`and `Images` document sets also support uploading new assets, both using a `Stream`or by simply providing a source URL.
+
+The `Files`and `Images` document sets also support uploading new assets, both using a `Stream`or by simply providing a
+source URL.
 
  ``` csharp
 // Example: upload image and link to new document
@@ -320,25 +369,37 @@ await sanity.DocumentSet<Author>().Create(author).CommitAsync();
  ```
 
 ### 7. Debugging
+
 In order to see the raw GROQ query for a particular LINQ query, simply call `GetSanityQuery()`.
+
 ```csharp
 var groq = sanity.DocumentSet<Post>().Where(p => p.PublishedAt >= DateTime.Today).GetSanityQuery();
 
+// Note: Slicing with Take(1) or Skip(n).Take(1) now results in a single index GROQ slice [n]
+var singleGroq = sanity.DocumentSet<Post>().Take(1).GetSanityQuery(); // results in ...[0]
 ```
-GROQ queries can be tested directly in the Sanity UI using the Vision plugin: <https://www.sanity.io/docs/front-ends/the-vision-plugin>
 
+GROQ queries can be tested directly in the Sanity UI using the Vision
+plugin: <https://www.sanity.io/docs/front-ends/the-vision-plugin>
 
 ### 8. Raw Client
+
 The `SanityClient` class can be used for making "raw" GROQ requests to Sanity:
+
 ```csharp
 var client = new SanityClient(options);
 await result = await client.FetchAsync("*[_type == "post"]");
 ```
 
 ### 9. Rendering Block Content
-When you use the block editor in Sanity, it produces a structured array structure that you can use to render the content on any platform you might want. We have provided a class which can help you serialize your content to HTML, or potentially other formats using custom serializers. The `SanityHTmlBuilder` class has several inbuilt serializers, and new serializers can be added for custom Sanity types.
 
- `SanityHtmlBuilder` can be accessed in several different ways:
+When you use the block editor in Sanity, it produces a structured array structure that you can use to render the content
+on any platform you might want. We have provided a class which can help you serialize your content to HTML, or
+potentially other formats using custom serializers. The `SanityHTmlBuilder` class has several inbuilt serializers, and
+new serializers can be added for custom Sanity types.
+
+`SanityHtmlBuilder` can be accessed in several different ways:
+
 ```csharp
 // Create a stand-alone instance:
 var builder = new SanityHtmlBuilder(Options);
@@ -354,6 +415,7 @@ var sanity = new SanityDataContext(Options);
 var post = await sanity.DocumentSet<Post>().FirstOrDefault();
 var result = await post.Body.ToHtmlAsync(sanity);
 ```
+
 You can also add your custom serializers to the `SanityHtmlBuilder`
 
 ```csharp
@@ -365,6 +427,7 @@ builder.AddSerializer("myType", MySerializerFn);
 ```
 
 The HTML builder supports serializing BlockContent arrays as well as single fields (such as an image field):
+
 ```csharp
 //This will check if the "_type" of the Body field has a serializer in the HtmlBuilder.Serializers dictionary and use it to return html.
 var html = await htmlBuilder.BuildAsync(post.Body);
@@ -373,4 +436,5 @@ var html = await htmlBuilder.BuildAsync(post.Body);
 var html = await post.Body.ToHtmlAsync(sanity); // the whole content
 var imageTag = await post.MainImage.ToHtmlAsync(sanity); // just a single block
 ```
+
 -------

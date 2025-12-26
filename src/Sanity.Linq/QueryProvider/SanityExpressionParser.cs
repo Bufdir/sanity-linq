@@ -21,10 +21,12 @@ namespace Sanity.Linq.QueryProvider;
 
 internal class SanityExpressionParser(Expression expression, Type docType, int maxNestingLevel, Type? resultType = null) : ExpressionVisitor
 {
+    private readonly HashSet<Expression> _visited = [];
     public Type DocType { get; } = docType;
     public Expression Expression { get; } = expression;
     public int MaxNestingLevel { get; set; } = maxNestingLevel;
     public Type ResultType { get; } = resultType != null ? TypeSystem.GetElementType(resultType) : docType;
+    public bool ExpectsArray { get; } = resultType != null && resultType != typeof(string) && typeof(IEnumerable).IsAssignableFrom(resultType);
     private SanityQueryBuilder QueryBuilder { get; set; } = new();
 
     public string BuildQuery(bool includeProjections = true)
@@ -34,15 +36,15 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         {
             // Add constraint for root type
             DocType = DocType,
-            ResultType = ResultType
+            ResultType = ResultType,
+            ExpectsArray = ExpectsArray
         };
 
         // Parse Query
-        if (Expression is MethodCallExpression or LambdaExpression)
-        {
+        var expression = Evaluator.PartialEval(Expression);
+        if (expression is MethodCallExpression or LambdaExpression)
             // Traverse expression to build query
-            Visit(Expression);
-        }
+            Visit(expression);
 
         // Build query
         var query = QueryBuilder.Build(includeProjections, MaxNestingLevel);
@@ -51,144 +53,121 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     public override Expression? Visit(Expression? expression)
     {
-        switch (expression)
+        if (expression == null || !_visited.Add(expression)) return expression;
+
+        if (expression is LambdaExpression lambda)
         {
-            case null:
-                return null;
-
-            case LambdaExpression:
-                {
-                    //Simplify lambda
-                    expression = (LambdaExpression)Evaluator.PartialEval(expression);
-                    if (((LambdaExpression)expression).Body is MethodCallExpression method)
-                    {
-                        QueryBuilder.Constraints.Add(TransformMethodCallExpression(method));
-                    }
-
-                    break;
-                }
+            var simplified = (LambdaExpression)Evaluator.PartialEval(lambda);
+            if (simplified.Body is MethodCallExpression method) QueryBuilder.Constraints.Add(TransformMethodCallExpression(method));
+            // If it's a lambda, we don't necessarily want to fall through to Visit binary/unary/etc
+            // because those might add constraints that are already handled or not appropriate here.
+            // But let's check what the original code did. It had two switch statements.
         }
 
-        switch (expression)
+        return expression switch
         {
-            case BinaryExpression b:
-                QueryBuilder.Constraints.Add(TransformBinaryExpression(b));
-                return b;
+            BinaryExpression b => HandleVisitBinary(b),
+            UnaryExpression u => HandleVisitUnary(u),
+            MethodCallExpression m => HandleVisitMethodCall(m),
+            _ => base.Visit(expression)
+        };
+    }
 
-            case UnaryExpression u:
-                QueryBuilder.Constraints.Add(TransformUnaryExpression(u));
-                return u;
+    private BinaryExpression HandleVisitBinary(BinaryExpression b)
+    {
+        QueryBuilder.Constraints.Add(TransformBinaryExpression(b));
+        return b;
+    }
 
-            case MethodCallExpression m:
-                {
-                    TransformMethodCallExpression(m);
-                    if (m.Arguments[0] is not ConstantExpression)
-                    {
-                        Visit(m.Arguments[0]);
-                    }
-                    return expression;
-                }
+    private UnaryExpression HandleVisitUnary(UnaryExpression u)
+    {
+        QueryBuilder.Constraints.Add(TransformUnaryExpression(u));
+        return u;
+    }
 
-            default:
-                return base.Visit(expression);
-        }
+    private MethodCallExpression HandleVisitMethodCall(MethodCallExpression m)
+    {
+        TransformMethodCallExpression(m);
+        if (m.Arguments.Count > 0 && m.Arguments[0] is not ConstantExpression) Visit(m.Arguments[0]);
+        return m;
     }
 
     private static string HandleGetValue(MethodCallExpression e)
     {
-        if (e.Arguments.Count <= 0)
-        {
-            throw new Exception("Could not evaluate GetValue method");
-        }
+        if (e.Arguments.Count <= 0) throw new Exception("Could not evaluate GetValue method");
 
         var simplifiedExpression = Evaluator.PartialEval(e.Arguments[1]);
-        if (simplifiedExpression is not ConstantExpression c || c.Type != typeof(string))
-        {
-            throw new Exception("Could not evaluate GetValue method");
-        }
+        if (simplifiedExpression is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
 
         var fieldName = c.Value?.ToString() ?? "";
         return $"{fieldName}";
     }
 
+    private static string EscapeString(string value)
+    {
+        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
     private string HandleContains(MethodCallExpression e)
     {
-        // Try to resolve standard shapes: instance and static Contains
-        if (TryGetParts(e, out var collectionExpr, out var valueExpr) && collectionExpr != null && valueExpr != null)
-        {
-            // Case 1: enumerable constant/list: titles.Contains(p.Title)
-            var eval = TryEvaluate(collectionExpr);
-            if (eval is IEnumerable ie and not string)
-            {
-                var memberName = TransformOperand(valueExpr);
-                return $"{memberName} in {JoinValues(ie)}";
-            }
+        if (!TryGetParts(e, out var collectionExpr, out var valueExpr) || collectionExpr == null || valueExpr == null) return HandleContainsLegacy(e);
 
-            // Case 2: property.Contains(constant)
-            if (collectionExpr is MemberExpression)
+        // Case 1: enumerable constant/list: titles.Contains(p.Title)
+        var eval = TryEvaluate(collectionExpr);
+        if (eval is IEnumerable ie and not string)
+        {
+            var memberName = TransformOperand(valueExpr);
+            return $"{memberName} in {JoinValues(ie)}";
+        }
+
+        // Case 2: property.Contains(constant)
+        if (collectionExpr is MemberExpression)
+        {
+            var simplifiedValue = Evaluator.PartialEval(valueExpr);
+            if (simplifiedValue is ConstantExpression { Value: not null } c2)
             {
-                var simplifiedValue = Evaluator.PartialEval(valueExpr);
-                if (simplifiedValue is ConstantExpression { Value: not null } c2)
+                var memberName = TransformOperand(collectionExpr);
+                var valStr = c2.Value.ToString() ?? "";
+                if (c2.Type == typeof(string) || c2.Type == typeof(Guid))
                 {
-                    var memberName = TransformOperand(collectionExpr);
-                    return (c2.Type == typeof(string) || c2.Type == typeof(Guid))
-                        ? $"\"{c2.Value}\" in {memberName}"
-                        : $"{c2.Value} in {memberName}";
+                    valStr = EscapeString(valStr);
+                    return $"\"{valStr}\" in {memberName}";
                 }
-            }
 
-            // Case 3: property.Contains(otherProperty)
-            var collUnwrapped = collectionExpr is UnaryExpression { NodeType: ExpressionType.Convert } uc ? uc.Operand : collectionExpr;
-            var valUnwrapped = valueExpr is UnaryExpression { NodeType: ExpressionType.Convert } uv ? uv.Operand : valueExpr;
-            if (collUnwrapped is MemberExpression && valUnwrapped is MemberExpression)
-            {
-                var left = TransformOperand(collUnwrapped);
-                var right = TransformOperand(valUnwrapped);
-                return $"{right} in {left}";
-            }
-
-            // Case 4: generic fallback
-            var leftAny = TransformOperand(collectionExpr);
-            var rightAny = TransformOperand(valueExpr);
-            if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny))
-            {
-                return $"{rightAny} in {leftAny}";
+                return $"{valStr} in {memberName}";
             }
         }
 
-        // Legacy branch: two-arg form when parsing fallback
-        if (e.Arguments.Count == 2)
+        // Case 3: property.Contains(otherProperty)
+        var collUnwrapped = collectionExpr is UnaryExpression { NodeType: ExpressionType.Convert } uc ? uc.Operand : collectionExpr;
+        var valUnwrapped = valueExpr is UnaryExpression { NodeType: ExpressionType.Convert } uv ? uv.Operand : valueExpr;
+        if (collUnwrapped is MemberExpression && valUnwrapped is MemberExpression)
         {
-            var memberName = TransformOperand(e.Arguments[0]);
-            var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
-            if (simplifiedValue is not ConstantExpression c2)
-            {
-                throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
-            }
-
-            var valueObj = c2.Value;
-            if (valueObj == null)
-            {
-                throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
-            }
-
-            return (c2.Type == typeof(string) || c2.Type == typeof(Guid))
-                ? $"\"{valueObj}\" in {memberName}"
-                : $"{valueObj} in {memberName}";
+            var left = TransformOperand(collUnwrapped);
+            var right = TransformOperand(valUnwrapped);
+            return $"{right} in {left}";
         }
+
+        // Case 4: generic fallback
+        var leftAny = TransformOperand(collectionExpr);
+        var rightAny = TransformOperand(valueExpr);
+        if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny)) return $"{rightAny} in {leftAny}";
 
         throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
         static object? TryEvaluate(Expression expr)
         {
             var simplified = Evaluator.PartialEval(expr);
-            if (simplified is ConstantExpression c)
-            {
-                return c.Value;
-            }
+            if (simplified is ConstantExpression c) return c.Value;
 
-            try { return Expression.Lambda(simplified).Compile().DynamicInvoke(); }
-            catch { return null; }
+            try
+            {
+                return Expression.Lambda(simplified).Compile().DynamicInvoke();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // Local helpers to reduce nesting
@@ -200,12 +179,14 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
                 val = call.Arguments[0];
                 return true;
             }
+
             if (call.Object == null && call.Arguments.Count == 2)
             {
                 coll = call.Arguments[0];
                 val = call.Arguments[1];
                 return true;
             }
+
             coll = null;
             val = null;
             return false;
@@ -220,10 +201,31 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             if (t == typeof(string) || t == typeof(Guid))
             {
                 // Quote string-like entries without adding backslashes to the output
-                return $"[\"{string.Join("\",\"", arr)}\"]";
+                var escapedValues = arr.Select(o => o == null ? "" : EscapeString(o.ToString()!));
+                return $"[\"{string.Join("\",\"", escapedValues)}\"]";
             }
+
             return $"[{string.Join(",", arr)}]";
         }
+    }
+
+    private string HandleContainsLegacy(MethodCallExpression e)
+    {
+        if (e.Arguments.Count == 2)
+        {
+            var memberName = TransformOperand(e.Arguments[0]);
+            var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
+            if (simplifiedValue is not ConstantExpression c2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+
+            var valueObj = c2.Value;
+            if (valueObj == null) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+
+            return c2.Type == typeof(string) || c2.Type == typeof(Guid)
+                ? $"\"{valueObj}\" in {memberName}"
+                : $"{valueObj} in {memberName}";
+        }
+
+        throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
     }
 
     private string HandleCount(MethodCallExpression e)
@@ -237,62 +239,110 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     private string HandleImplicit(MethodCallExpression e)
     {
         // Treat implicit conversions as no-ops in the query translation
-        if (e.Arguments is { Count: 1 })
-        {
-            return TransformOperand(e.Arguments[0]);
-        }
+        if (e.Arguments is { Count: 1 }) return TransformOperand(e.Arguments[0]);
+        if (e.Object != null) return TransformOperand(e.Object);
+        if (e.Arguments is { Count: > 0 }) return TransformOperand(e.Arguments[0]);
+        throw new Exception("op_Implicit method shape not supported.");
+    }
+
+    private string HandleAny(MethodCallExpression e)
+    {
+        Expression sourceExpr;
         if (e.Object != null)
         {
-            return TransformOperand(e.Object);
+            if (e.Arguments.Count > 0) throw new Exception("Any with a predicate is not supported.");
+            sourceExpr = e.Object;
         }
-        if (e.Arguments is { Count: > 0 })
+        else if (e.Arguments.Count == 1)
         {
-            return TransformOperand(e.Arguments[0]);
+            sourceExpr = e.Arguments[0];
         }
-        throw new Exception("op_Implicit method shape not supported.");
+        else
+        {
+            throw new Exception("Any with a predicate is not supported.");
+        }
+
+        var source = TransformOperand(sourceExpr);
+        return $"count({source}) > 0";
     }
 
     private string HandleInclude(MethodCallExpression e)
     {
         // Arg 1: Field to join
-        Expression? lambdaBody = null;
-        if (e.Arguments[1] is UnaryExpression { Operand: LambdaExpression l1 })
-        {
-            lambdaBody = l1.Body;
-        }
+        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression lambda })
+            throw new Exception("Include must be a lambda expression.");
 
-        if (lambdaBody is MethodCallExpression { Method.Name: "SelectMany" } mce)
+        var body = lambda.Body;
+        var selectors = new List<LambdaExpression>();
+        while (body is MethodCallExpression mce && mce.Method.Name is "Select" or "SelectMany" or "OfType")
         {
-            lambdaBody = mce.Arguments[0];
-        }
-
-        if (lambdaBody is MethodCallExpression { Method.Name: "OfType" } mceOfType)
-        {
-            lambdaBody = mceOfType.Arguments[0];
-        }
-
-        if (lambdaBody is not MemberExpression { Member.MemberType: MemberTypes.Property })
-        {
-            throw new Exception("Joins can only be applied to properties.");
-        }
-
-        var fieldPath = TransformOperand(lambdaBody);
-        var propertyType = lambdaBody.Type;
-        var targetName = fieldPath.Split('.', '>').LastOrDefault() ?? string.Empty;
-        var sourceName = targetName;
-
-        // Arg 2: fieldName
-        if (e.Arguments.Count > 2 && e.Arguments[2] is ConstantExpression c)
-        {
-            sourceName = c.Value?.ToString() ?? string.Empty;
-            if (string.IsNullOrEmpty(sourceName))
+            if (mce.Method.Name is "Select" or "SelectMany" && mce.Arguments.Count > 1 &&
+                mce.Arguments[1] is UnaryExpression { Operand: LambdaExpression selector })
             {
-                sourceName = targetName;
+                selectors.Insert(0, selector);
             }
+
+            body = mce.Arguments[0];
         }
-        var projection = SanityQueryBuilder.GetJoinProjection(sourceName, targetName, propertyType, 0, MaxNestingLevel);
+
+        if (body is not MemberExpression { Member.MemberType: MemberTypes.Property } me)
+            throw new Exception("Joins can only be applied to properties.");
+
+        var fieldPath = TransformOperand(me);
+        var currentPath = fieldPath;
+        var currentOriginalType = me.Type;
+
+        // If we have selectors, we should also ensure parents are included
+        for (var i = 0; i < selectors.Count; i++)
+        {
+            var selector = selectors[i];
+            // The type of the current path is the parameter type of the next selector.
+            // BUT if currentOriginalType is a collection, we should represent it as a collection of the parameter type.
+            var currentType = selector.Parameters[0].Type;
+            AddInclude(currentPath, currentType, null, currentOriginalType);
+
+            var selectorPath = TransformOperand(selector.Body);
+            if (selectorPath.StartsWith("@")) selectorPath = selectorPath.Substring(1).TrimStart('.');
+
+            if (!string.IsNullOrEmpty(selectorPath))
+                currentPath = currentPath + (selectorPath.StartsWith("->") ? "" : ".") + selectorPath;
+
+            currentOriginalType = selector.Body.Type;
+        }
+
+        // Final include
+        var propertyType = e.Method.GetGenericArguments()[1];
+        var sourceName = GetIncludeSourceName(e, currentPath.Split('.', '>').LastOrDefault() ?? string.Empty);
+        return AddInclude(currentPath, propertyType, sourceName, currentOriginalType);
+    }
+
+    private string AddInclude(string fieldPath, Type propertyType, string? sourceName, Type originalType)
+    {
+        var targetName = fieldPath.Split('.', '>').LastOrDefault() ?? string.Empty;
+        var finalSourceName = sourceName ?? targetName;
+
+        // Wrap in IEnumerable if the original property was a collection but propertyType isn't.
+        // This is necessary for OfType/Select/SelectMany scenarios where we work on elements.
+        if (typeof(IEnumerable).IsAssignableFrom(originalType) && originalType != typeof(string)
+            && !typeof(IEnumerable).IsAssignableFrom(propertyType))
+        {
+            propertyType = typeof(IEnumerable<>).MakeGenericType(propertyType);
+        }
+
+        var projection = SanityQueryBuilder.GetJoinProjection(finalSourceName, targetName, propertyType, 0, MaxNestingLevel);
         QueryBuilder.Includes[fieldPath] = projection;
         return projection;
+    }
+
+    private static string GetIncludeSourceName(MethodCallExpression e, string targetName)
+    {
+        if (e.Arguments.Count > 2 && e.Arguments[2] is ConstantExpression c)
+        {
+            var value = c.Value?.ToString();
+            if (!string.IsNullOrEmpty(value)) return value;
+        }
+
+        return targetName;
     }
 
     private string HandleIsDefined(MethodCallExpression e)
@@ -311,16 +361,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     {
         Visit(e.Arguments[0]);
 
-        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l })
-        {
-            throw new Exception(descending ? "Order by descending expression not supported." : "Order by expression not supported.");
-        }
+        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l }) throw new Exception(descending ? "Order by descending expression not supported." : "Order by expression not supported.");
 
         var declaringType = l.Parameters[0].Type;
-        if (declaringType != DocType)
-        {
-            throw new Exception($"Ordering is only supported on root document type {DocType.Name}");
-        }
+        if (declaringType != DocType) throw new Exception($"Ordering is only supported on root document type {DocType.Name}");
         var ordering = TransformOperand(l.Body) + (descending ? " desc" : " asc");
         QueryBuilder.Orderings.Add(ordering);
         return ordering;
@@ -330,15 +374,9 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     {
         Visit(e.Arguments[0]);
 
-        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l })
-        {
-            throw new Exception("Syntax of Select expression not supported.");
-        }
+        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l }) throw new Exception("Syntax of Select expression not supported.");
 
-        if (l.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
-        {
-            throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
-        }
+        if (l.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string))) throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
         var projection = TransformOperand(l.Body);
         QueryBuilder.Projection = projection;
         return projection;
@@ -347,41 +385,29 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     private string HandleSkip(MethodCallExpression e)
     {
         Visit(e.Arguments[0]);
-        if (e.Arguments[1] is not ConstantExpression { Value: int skip })
-        {
-            throw new Exception("Format for Skip expression not supported.");
-        }
+        if (e.Arguments[1] is not ConstantExpression { Value: int skip }) throw new Exception("Format for Skip expression not supported.");
         QueryBuilder.Skip = skip;
         return QueryBuilder.Skip.ToString();
     }
 
     private string HandleStartsWith(MethodCallExpression e)
     {
-        if (e.Object is null)
-        {
-            throw new Exception("StartsWith must be called on an instance.");
-        }
+        if (e.Object is null) throw new Exception("StartsWith must be called on an instance.");
         var memberName = TransformOperand(e.Object);
-        string value;
-        if (e.Arguments[0] is ConstantExpression c && c.Type == typeof(string))
+        var simplifiedValue = Evaluator.PartialEval(e.Arguments[0]);
+        if (simplifiedValue is ConstantExpression c && c.Type == typeof(string))
         {
-            value = c.Value?.ToString() ?? "";
-        }
-        else
-        {
-            throw new Exception("StartsWith is only supported for constant expressions");
+            var value = EscapeString(c.Value?.ToString() ?? "");
+            return $"{memberName} match \"{value}*\"";
         }
 
-        return $"{memberName} match \"{value}*\"";
+        throw new Exception("StartsWith is only supported for constant expressions");
     }
 
     private string HandleTake(MethodCallExpression e)
     {
         Visit(e.Arguments[0]);
-        if (e.Arguments[1] is not ConstantExpression { Value: int take })
-        {
-            throw new Exception("Format for Take expression not supported.");
-        }
+        if (e.Arguments[1] is not ConstantExpression { Value: int take }) throw new Exception("Format for Take expression not supported.");
         QueryBuilder.Take = take;
         return QueryBuilder.Take.ToString();
     }
@@ -389,16 +415,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     private string HandleWhere(MethodCallExpression e)
     {
         var elementType = TypeSystem.GetElementType(e.Arguments[0].Type);
-        if (elementType != DocType)
-        {
-            throw new Exception("Where expressions are only supported on the root type.");
-        }
+        if (elementType != DocType) throw new Exception("Where expressions are only supported on the root type.");
         Visit(e.Arguments[0]);
 
-        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l })
-        {
-            throw new Exception("Syntax of Select expression not supported.");
-        }
+        if (e.Arguments[1] is not UnaryExpression { Operand: LambdaExpression l }) throw new Exception("Syntax of Select expression not supported.");
 
         var constraint = TransformOperand(l.Body);
         QueryBuilder.Constraints.Add(constraint);
@@ -407,7 +427,25 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string TransformBinaryExpression(BinaryExpression b)
     {
-        var op = b.NodeType switch
+        var op = GetBinaryOperator(b.NodeType);
+        var left = TransformOperand(b.Left);
+        var right = TransformOperand(b.Right);
+
+        if (left == "null" && (op == "==" || op == "!="))
+            // Swap left and right so null is always on the right for comparison logic
+            (left, right) = (right, left);
+
+        return right switch
+        {
+            "null" when op == "==" => $"(!(defined({left})) || {left} {op} {right})",
+            "null" when op == "!=" => $"(defined({left}) && {left} {op} {right})",
+            _ => $"{left} {op} {right}"
+        };
+    }
+
+    private static string GetBinaryOperator(ExpressionType nodeType)
+    {
+        return nodeType switch
         {
             ExpressionType.Equal => "==",
             ExpressionType.AndAlso => "&&",
@@ -417,18 +455,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             ExpressionType.LessThanOrEqual => "<=",
             ExpressionType.GreaterThanOrEqual => ">=",
             ExpressionType.NotEqual => "!=",
-            _ => throw new NotImplementedException($"Operator '{b.NodeType}' is not supported.")
-        };
-
-        var left = TransformOperand(b.Left);
-        var right = TransformOperand(b.Right);
-
-        return right switch
-        {
-            // Handle comparison to null
-            "null" when op == "==" => $"(!(defined({left})) || {left} {op} {right})",
-            "null" when op == "!=" => $"(defined({left}) && {left} {op} {right})",
-            _ => $"({left} {op} {right})"
+            _ => throw new NotImplementedException($"Operator '{nodeType}' is not supported.")
         };
     }
 
@@ -490,11 +517,11 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
             case "OrderBy":
             case "ThenBy":
-                return HandleOrdering(e, descending: false);
+                return HandleOrdering(e, false);
 
             case "OrderByDescending":
             case "ThenByDescending":
-                return HandleOrdering(e, descending: true);
+                return HandleOrdering(e, true);
 
             case "Count":
             case "LongCount":
@@ -509,6 +536,9 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             case "op_Implicit":
                 return HandleImplicit(e);
 
+            case "Any":
+                return HandleAny(e);
+
             default:
                 throw new Exception($"Method call {e.Method.Name} not supported.");
         }
@@ -516,112 +546,81 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string TransformOperand(Expression e)
     {
-        // Attempt to simplify
-        e = Evaluator.PartialEval(e);
-
-        switch (e)
+        return e switch
         {
-            // Member access
-            case MemberExpression m:
-                {
-                    var memberPath = new List<string>();
-                    var member = m.Member;
+            MemberExpression m => HandleMemberExpression(m),
+            NewExpression nw => HandleNewExpression(nw),
+            BinaryExpression b => TransformBinaryExpression(b),
+            UnaryExpression u => TransformUnaryExpression(u),
+            MethodCallExpression mc => TransformMethodCallExpression(mc),
+            ConstantExpression { Value: null } => "null",
+            ConstantExpression c when c.Type == typeof(string) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
+            ConstantExpression c when IsNumericOrBoolType(c.Type) =>
+                string.Format(CultureInfo.InvariantCulture, "{0}", c.Value).ToLower(),
+            ConstantExpression { Value: DateTime dt } => dt == dt.Date
+                ? $"\"{dt:yyyy-MM-dd}\""
+                : $"\"{dt:O}\"",
+            ConstantExpression { Value: DateTimeOffset dto } => $"\"{dto:O}\"",
+            ConstantExpression c when c.Type == typeof(Guid) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
+            ConstantExpression c => c.Value?.ToString() ?? "null",
+            ParameterExpression => "@",
+            _ => throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ")
+        };
+    }
 
-                    if (member is { Name: "Value", DeclaringType.IsGenericType: true } && member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-                    {
-                        memberPath.Add("->");
-                    }
-                    else
-                    {
-                        if (member.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() is JsonPropertyAttribute jsonProperty)
-                        {
-                            memberPath.Add(jsonProperty.PropertyName ?? member.Name.ToCamelCase());
-                        }
-                        else
-                        {
-                            memberPath.Add(member.Name.ToCamelCase());
-                        }
-                    }
-                    if (m.Expression is MemberExpression inner)
-                    {
-                        memberPath.Add(TransformOperand(inner));
-                    }
+    private static bool IsNumericOrBoolType(Type type)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+        return underlyingType == typeof(int) ||
+               underlyingType == typeof(double) ||
+               underlyingType == typeof(float) ||
+               underlyingType == typeof(short) ||
+               underlyingType == typeof(byte) ||
+               underlyingType == typeof(decimal) ||
+               underlyingType == typeof(bool);
+    }
 
-                    return memberPath.Aggregate((a1, a2) => a1 != "->" && a2 != "->" ? $"{a2}.{a1}" : $"{a2}{a1}").Replace(".->", "->").Replace("->.", "->");
-                }
-            case NewExpression nw:
-                {
-                    // New expression with support for nested news
-                    var args = nw.Arguments.Select(arg => arg is NewExpression ? "{" + TransformOperand(arg) + "}" : TransformOperand(arg)).ToArray();
-                    var props = (nw.Members ?? Enumerable.Empty<MemberInfo>()).Select(prop => prop.Name.ToCamelCase()).ToArray();
-                    if (args.Length != props.Length)
-                    {
-                        throw new Exception("Selections must be anonymous types without a constructor.");
-                    }
+    private string HandleMemberExpression(MemberExpression m)
+    {
+        var memberPath = new List<string>();
+        var member = m.Member;
 
-                    var projection = args
-                        .Select((t, i) => t.Equals(props[i]) ? t : $"\"{props[i]}\": {t}")
-                        .ToList();
-                    return projection.Aggregate((pc, pn) => $"{pc}, {pn}");
-                }
-            // Binary
-            case BinaryExpression b:
-                return TransformBinaryExpression(b);
-            // Unary
-            case UnaryExpression u:
-                return TransformUnaryExpression(u);
-            // Method call
-            case MethodCallExpression mc:
-                return TransformMethodCallExpression(mc);
-            // Constant
-            case ConstantExpression { Value: null }:
-                return "null";
-
-            case ConstantExpression c when c.Type == typeof(string):
-                return $"\"{c.Value}\"";
-
-            case ConstantExpression c when c.Type == typeof(int) ||
-                                           c.Type == typeof(int?) ||
-                                           c.Type == typeof(double) ||
-                                           c.Type == typeof(double?) ||
-                                           c.Type == typeof(float) ||
-                                           c.Type == typeof(float?) ||
-                                           c.Type == typeof(short) ||
-                                           c.Type == typeof(short?) ||
-                                           c.Type == typeof(byte) ||
-                                           c.Type == typeof(byte?) ||
-                                           c.Type == typeof(decimal) ||
-                                           c.Type == typeof(decimal?):
-                return $"{string.Format(CultureInfo.InvariantCulture, "{0}", c.Value).ToLower()}";
-
-            case ConstantExpression c when c.Type == typeof(bool) ||
-                                           c.Type == typeof(bool?):
-                return $"{string.Format(CultureInfo.InvariantCulture, "{0}", c.Value).ToLower()}";
-
-            case ConstantExpression { Value: DateTime dt }:
-                {
-                    if (dt == dt.Date) //No time component
-                    {
-                        return $"\"{dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}\"";
-                    }
-
-                    return $"\"{dt.ToString("O", CultureInfo.InvariantCulture)}\"";
-                }
-            case ConstantExpression { Value: DateTimeOffset dto }:
-                return $"\"{dto.ToString("O", CultureInfo.InvariantCulture)}\"";
-
-            case ConstantExpression c:
-                if (c.Type == typeof(Guid)) return $"\"{c.Value}\"";
-                if (c.Value == null) return "null";
-                if (c.Type == typeof(string)) return $"\"{c.Value}\"";
-                return c.Value?.ToString() ?? "null";
-
-            case var p when p.NodeType == ExpressionType.Parameter:
-                return "@";
-
-            default:
-                throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ");
+        if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
+            member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        {
+            memberPath.Add("->");
         }
+        else
+        {
+            var jsonProperty = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
+                .Cast<JsonPropertyAttribute>().FirstOrDefault();
+            memberPath.Add(jsonProperty?.PropertyName ?? member.Name.ToCamelCase());
+        }
+
+        if (m.Expression is MemberExpression inner) memberPath.Add(TransformOperand(inner));
+
+        return memberPath
+            .Aggregate((a1, a2) => a1 != "->" && a2 != "->" ? $"{a2}.{a1}" : $"{a2}{a1}")
+            .Replace(".->", "->")
+            .Replace("->.", "->");
+    }
+
+    private string HandleNewExpression(NewExpression nw)
+    {
+        var args = nw.Arguments
+            .Select(arg => arg is NewExpression ? "{" + TransformOperand(arg) + "}" : TransformOperand(arg))
+            .ToArray();
+        var props = (nw.Members ?? Enumerable.Empty<MemberInfo>())
+            .Select(prop => prop.Name.ToCamelCase())
+            .ToArray();
+
+        if (args.Length != props.Length) throw new Exception("Selections must be anonymous types without a constructor.");
+
+        var projection = args
+            .Select((t, i) => t.Equals(props[i]) ? t : $"\"{props[i]}\": {t}")
+            .ToList();
+
+        return string.Join(", ", projection);
     }
 
     private string TransformUnaryExpression(UnaryExpression u)

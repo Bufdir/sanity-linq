@@ -225,6 +225,11 @@ public static class SanityDocumentSetExtensions
             return docs.Mutations.Create(document);
         }
 
+        public SanityMutationBuilder<TDoc> CreateIfNotExists(TDoc document)
+        {
+            return docs.Mutations.CreateIfNotExists(document);
+        }
+
         /// <summary>
         /// Sets only non-null values.
         /// </summary>

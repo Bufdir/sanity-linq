@@ -87,8 +87,46 @@ public class SanityExpressionParserTests
         Assert.Contains("_type=='reference'=>@->", groq);
     }
 
+    [Fact]
+    public void GetSanityQuery_With_MethodCall_In_Lambda_DoesNot_Duplicate_Constraints()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+
+        // We want to trigger the logic in Visit(LambdaExpression) and then ensure Visit(expression switch) doesn't double-add.
+        var queryable = set.Where(d => d.Title!.StartsWith("A"));
+        var provider = (SanityQueryProvider)queryable.Provider;
+
+        // Act
+        var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
+
+        // Assert
+        // The constraint should appear only once.
+        // "title match \"A*\""
+        var matches = System.Text.RegularExpressions.Regex.Matches(groq, "title match \"A\\*\"");
+        Assert.Single(matches);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Multiple_Includes_Returns_Expected_Groq()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<IncludeDoc>(context, 3);
+
+        // Act
+        var queryable = set.Include(d => d.Refs).Include(d => d.Title);
+        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+
+        // Assert
+        Assert.Contains("refs", groq);
+        Assert.Contains("title", groq);
+    }
+
     private sealed class IncludeDoc : SanityDocument
     {
         public List<SanityReference<IncludeDoc>>? Refs { get; set; }
+        public string? Title { get; set; }
     }
 }

@@ -144,6 +144,24 @@ public static class SanityDocumentSetExtensions
             };
         }
 
+        /// <summary>
+        /// Asynchronously returns the first element of a sequence that satisfies a specified condition or a default value if no such element is found.
+        /// </summary>
+        /// <typeparam name="T">
+        /// The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="predicate">
+        /// A function to test each element for a condition.
+        /// </param>
+        /// <param name="cancellationToken">
+        /// A <see cref="CancellationToken"/> to observe while waiting for the task to complete.
+        /// </param>
+        public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return await source.Where(predicate).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         public async Task<IEnumerable<T>> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             return source switch

@@ -222,7 +222,7 @@ internal class SanityMethodCallTranslator(
 
         var targetName = fieldPath.Split('.').Last();
         var actualSourceName = sourceName ?? targetName;
-        var includeValue = SanityQueryBuilder.GetJoinProjection(actualSourceName, targetName, propertyType, 0, 0);
+        var includeValue = SanityQueryBuilder.GetJoinProjection(actualSourceName, targetName, propertyType, 0, 0, true);
         queryBuilder.Includes.Add(fieldPath, includeValue);
         return fieldPath;
     }

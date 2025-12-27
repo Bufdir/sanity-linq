@@ -55,8 +55,9 @@ internal sealed partial class SanityQueryBuilder
     /// <param name="propertyType">The type of the property being projected.</param>
     /// <param name="nestingLevel">The current nesting level of the projection.</param>
     /// <param name="maxNestingLevel">The maximum allowed nesting level for projections.</param>
+    /// <param name="isExplicit">Indicates if the join is explicitly requested.</param>
     /// <returns>A string representing the projection for the specified property.</returns>
-    public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel)
+    public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit = false)
     {
         // Build field reference (alias if needed)
         var fieldRef = sourceName == targetName || string.IsNullOrEmpty(targetName)
@@ -81,7 +82,7 @@ internal sealed partial class SanityQueryBuilder
         if (IsListOfSanityImages(propertyType, out var imgElementType)) return HandleListOfSanityImagesCase(fieldRef, imgElementType!, nestingLevel, maxNestingLevel);
 
         // CASE 5: Fallback case: enumerable or non-enumerable object
-        return HandleGenericObjectCase(fieldRef, propertyType, nestingLevel, maxNestingLevel);
+        return HandleGenericObjectCase(fieldRef, propertyType, nestingLevel, maxNestingLevel, isExplicit);
     }
 
     private static string HandleSanityReferenceCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel)
@@ -118,18 +119,30 @@ internal sealed partial class SanityQueryBuilder
         return $"{fieldRef}[]{{{fieldList}}}";
     }
 
-    private static string HandleGenericObjectCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel)
+    private static string HandleGenericObjectCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit)
     {
         var isEnumerable = TryGetEnumerableElementType(propertyType, out var enumerableType);
         var targetType = isEnumerable ? enumerableType! : propertyType;
         var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
         var suffix = isEnumerable ? "[][defined(@)]" : "";
 
-        if (fields.Count <= 0) 
-            return $"{fieldRef}{suffix}{{{SanityConstants.SPREAD_OPERATOR},{SanityConstants.DEREFERENCING_SWITCH + "{" + SanityConstants.SPREAD_OPERATOR + "}"}}}";
+        if (fields.Count <= 0)
+        {
+            var projection = $"{fieldRef}{suffix}{{{SanityConstants.SPREAD_OPERATOR}}}";
+            if (isExplicit)
+            {
+                projection = $"{fieldRef}{suffix}{{{SanityConstants.SPREAD_OPERATOR},{SanityConstants.DEREFERENCING_SWITCH + "{" + SanityConstants.SPREAD_OPERATOR + "}"}}}";
+            }
+            return projection;
+        }
 
         var fieldList = JoinComma(fields);
-        return $"{fieldRef}{suffix}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        var baseProjection = $"{fieldRef}{suffix}{{{fieldList}}}";
+        if (isExplicit)
+        {
+            baseProjection = $"{fieldRef}{suffix}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        }
+        return baseProjection;
     }
 
     /// <summary>
@@ -198,7 +211,7 @@ internal sealed partial class SanityQueryBuilder
         var includeAttr = prop.GetCustomAttributes<IncludeAttribute>(true).FirstOrDefault();
         if (includeAttr != null)
         {
-            projection = GetJoinProjection(sourceName, targetName, prop.PropertyType, nestingLevel + 1, maxNestingLevel);
+            projection = GetJoinProjection(sourceName, targetName, prop.PropertyType, nestingLevel + 1, maxNestingLevel, true);
             return true;
         }
 
@@ -209,7 +222,17 @@ internal sealed partial class SanityQueryBuilder
     private static bool ShouldExpandComplexType(PropertyInfo prop)
     {
         // Only complex classes (non-string) need further processing
-        return prop.PropertyType.IsClass && prop.PropertyType != typeof(string);
+        if (!prop.PropertyType.IsClass || prop.PropertyType == typeof(string)) return false;
+
+        // Skip auto-expansion for Sanity references and images as they involve dereferencing, 
+        // which should be controlled by [Include] or explicit .Include()
+        if (IsSanityReferenceType(prop.PropertyType) || IsListOfSanityReference(prop.PropertyType, out _))
+            return false;
+
+        if (HasSanityImageAsset(prop.PropertyType.GetProperties(), out _) || IsListOfSanityImages(prop.PropertyType, out _))
+            return false;
+
+        return true;
     }
 
     /// <summary>
@@ -482,7 +505,10 @@ internal sealed partial class SanityQueryBuilder
             switch (Take)
             {
                 case 1:
-                    sb.Append($" [{Skip}]");
+                    if (ExpectsArray)
+                        sb.Append($" [{Skip}..{Skip}]");
+                    else
+                        sb.Append($" [{Skip}]");
                     break;
                 case 0:
                     sb.Append($" [{Skip}...{Skip}]");

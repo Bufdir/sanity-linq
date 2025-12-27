@@ -69,7 +69,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             BinaryExpression b => HandleVisitBinary(b),
             UnaryExpression u => HandleVisitUnary(u),
             MethodCallExpression m => HandleVisitMethodCall(m),
-            _ => base.Visit(expression)
+            _ => expression
         };
     }
 
@@ -198,34 +198,28 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             if (arr.Length == 0) return "[]";
             var first = arr[0]!;
             var t = first.GetType();
-            if (t == typeof(string) || t == typeof(Guid))
-            {
-                // Quote string-like entries without adding backslashes to the output
-                var escapedValues = arr.Select(o => o == null ? "" : EscapeString(o.ToString()!));
-                return $"[\"{string.Join("\",\"", escapedValues)}\"]";
-            }
+            if (t != typeof(string) && t != typeof(Guid)) return $"[{string.Join(",", arr)}]";
 
-            return $"[{string.Join(",", arr)}]";
+            // Quote string-like entries without adding backslashes to the output
+            var escapedValues = arr.Select(o => o == null ? "" : EscapeString(o.ToString()!));
+            return $"[\"{string.Join("\",\"", escapedValues)}\"]";
         }
     }
 
     private string HandleContainsLegacy(MethodCallExpression e)
     {
-        if (e.Arguments.Count == 2)
-        {
-            var memberName = TransformOperand(e.Arguments[0]);
-            var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
-            if (simplifiedValue is not ConstantExpression c2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        if (e.Arguments.Count != 2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
-            var valueObj = c2.Value;
-            if (valueObj == null) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        var memberName = TransformOperand(e.Arguments[0]);
+        var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
+        if (simplifiedValue is not ConstantExpression c2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
-            return c2.Type == typeof(string) || c2.Type == typeof(Guid)
-                ? $"\"{valueObj}\" in {memberName}"
-                : $"{valueObj} in {memberName}";
-        }
+        var valueObj = c2.Value;
+        if (valueObj == null) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
-        throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        return c2.Type == typeof(string) || c2.Type == typeof(Guid)
+            ? $"\"{valueObj}\" in {memberName}"
+            : $"{valueObj} in {memberName}";
     }
 
     private string HandleCount(MethodCallExpression e)
@@ -274,12 +268,20 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
         var body = lambda.Body;
         var selectors = new List<LambdaExpression>();
-        while (body is MethodCallExpression mce && mce.Method.Name is "Select" or "SelectMany" or "OfType")
+        while (body is MethodCallExpression { Method.Name: "Select" or "SelectMany" or "OfType" } mce)
         {
-            if (mce.Method.Name is "Select" or "SelectMany" && mce.Arguments.Count > 1 &&
-                mce.Arguments[1] is UnaryExpression { Operand: LambdaExpression selector })
+            if (mce.Method.Name is "Select" or "SelectMany" && mce.Arguments.Count > 1)
             {
-                selectors.Insert(0, selector);
+                var arg = mce.Arguments[1];
+                switch (arg)
+                {
+                    case UnaryExpression { Operand: LambdaExpression selector1 }:
+                        selectors.Insert(0, selector1);
+                        break;
+                    case LambdaExpression selector2:
+                        selectors.Insert(0, selector2);
+                        break;
+                }
             }
 
             body = mce.Arguments[0];
@@ -293,11 +295,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         var currentOriginalType = me.Type;
 
         // If we have selectors, we should also ensure parents are included
-        for (var i = 0; i < selectors.Count; i++)
+        foreach (var selector in selectors)
         {
-            var selector = selectors[i];
             // The type of the current path is the parameter type of the next selector.
-            // BUT if currentOriginalType is a collection, we should represent it as a collection of the parameter type.
+            // BUT if the currentOriginalType is a collection, we should represent it as a collection of the parameter type.
             var currentType = selector.Parameters[0].Type;
             AddInclude(currentPath, currentType, null, currentOriginalType);
 
@@ -324,10 +325,8 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         // Wrap in IEnumerable if the original property was a collection but propertyType isn't.
         // This is necessary for OfType/Select/SelectMany scenarios where we work on elements.
         if (typeof(IEnumerable).IsAssignableFrom(originalType) && originalType != typeof(string)
-            && !typeof(IEnumerable).IsAssignableFrom(propertyType))
-        {
+                                                               && !typeof(IEnumerable).IsAssignableFrom(propertyType))
             propertyType = typeof(IEnumerable<>).MakeGenericType(propertyType);
-        }
 
         var projection = SanityQueryBuilder.GetJoinProjection(finalSourceName, targetName, propertyType, 0, MaxNestingLevel);
         QueryBuilder.Includes[fieldPath] = projection;
@@ -336,13 +335,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private static string GetIncludeSourceName(MethodCallExpression e, string targetName)
     {
-        if (e.Arguments.Count > 2 && e.Arguments[2] is ConstantExpression c)
-        {
-            var value = c.Value?.ToString();
-            if (!string.IsNullOrEmpty(value)) return value;
-        }
+        if (e.Arguments.Count <= 2 || e.Arguments[2] is not ConstantExpression c) return targetName;
 
-        return targetName;
+        var value = c.Value?.ToString();
+        return !string.IsNullOrEmpty(value) ? value : targetName;
     }
 
     private string HandleIsDefined(MethodCallExpression e)
@@ -395,13 +391,10 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         if (e.Object is null) throw new Exception("StartsWith must be called on an instance.");
         var memberName = TransformOperand(e.Object);
         var simplifiedValue = Evaluator.PartialEval(e.Arguments[0]);
-        if (simplifiedValue is ConstantExpression c && c.Type == typeof(string))
-        {
-            var value = EscapeString(c.Value?.ToString() ?? "");
-            return $"{memberName} match \"{value}*\"";
-        }
+        if (simplifiedValue is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("StartsWith is only supported for constant expressions");
 
-        throw new Exception("StartsWith is only supported for constant expressions");
+        var value = EscapeString(c.Value?.ToString() ?? "");
+        return $"{memberName} match \"{value}*\"";
     }
 
     private string HandleTake(MethodCallExpression e)
@@ -431,7 +424,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         var left = TransformOperand(b.Left);
         var right = TransformOperand(b.Right);
 
-        if (left == "null" && (op == "==" || op == "!="))
+        if (left == "null" && op is "==" or "!=")
             // Swap left and right so null is always on the right for comparison logic
             (left, right) = (right, left);
 
@@ -564,6 +557,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             ConstantExpression c when c.Type == typeof(Guid) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
             ConstantExpression c => c.Value?.ToString() ?? "null",
             ParameterExpression => "@",
+            NewArrayExpression na => "[" + string.Join(", ", na.Expressions.Select(TransformOperand)) + "]",
             _ => throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ")
         };
     }

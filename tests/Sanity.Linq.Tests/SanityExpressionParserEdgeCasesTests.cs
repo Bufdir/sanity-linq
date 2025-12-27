@@ -165,6 +165,166 @@ public class SanityExpressionParserEdgeCasesTests
         Assert.Contains("!(defined(title))", groq);
     }
 
+    [Fact]
+    public void Where_ContainsEmptyList_TranslatesToInEmptyArray()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var list = new List<string>();
+        var queryable = set.Where(d => list.Contains(d.Title!));
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("title in []", groq);
+    }
+
+    [Fact]
+    public void Where_ContainsListWithNull_FiltersNull()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var list = new List<string?> { "a", null, "b" };
+        var queryable = set.Where(d => list.Contains(d.Title));
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("title in [\"a\",\"b\"]", groq);
+    }
+
+    [Fact]
+    public void OrderBy_ThenBy_ProducesCorrectOrder()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var queryable = set.OrderBy(d => d.Title).ThenByDescending(d => d.Number);
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("order(title asc, number desc)", groq);
+    }
+
+    [Fact]
+    public void Take_Zero_ProducesCorrectSlice()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var queryable = set.Take(0);
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("[0...0]", groq);
+    }
+
+    [Fact]
+    public void Select_NestedAnonymousType_ProducesCorrectProjection()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var queryable = set.Select(d => new { d.Title, Info = new { d.Number } });
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("title", groq);
+        Assert.Contains("\"info\":{number}", groq.Replace(" ", ""));
+    }
+
+    [Fact]
+    public void Where_Not_IsNullOrEmpty()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var queryable = set.Where(d => !string.IsNullOrEmpty(d.Title));
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("!((title == null || title == \"\" || !(defined(title))))", groq);
+    }
+
+    [Fact]
+    public void Count_With_Predicate_TopLevel()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        
+        var provider = (SanityQueryProvider)set.Provider;
+        var param = System.Linq.Expressions.Expression.Parameter(typeof(EdgeDoc), "d");
+        var predicate = System.Linq.Expressions.Expression.Lambda<Func<EdgeDoc, bool>>(
+            System.Linq.Expressions.Expression.Equal(System.Linq.Expressions.Expression.Property(param, nameof(EdgeDoc.Title)), System.Linq.Expressions.Expression.Constant("X")),
+            param);
+        
+        var countMethod = typeof(Queryable).GetMethods().First(m => m.Name == "Count" && m.GetParameters().Length == 2).MakeGenericMethod(typeof(EdgeDoc));
+        var expr = System.Linq.Expressions.Expression.Call(null, countMethod, set.Expression, System.Linq.Expressions.Expression.Quote(predicate));
+
+        var groq = provider.GetSanityQuery<int>(expr);
+
+        Assert.StartsWith("count(*", groq);
+        Assert.Contains("title == \"X\"", groq);
+    }
+
+    [Fact]
+    public void Any_With_Predicate_TopLevel()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        
+        var provider = (SanityQueryProvider)set.Provider;
+        var param = System.Linq.Expressions.Expression.Parameter(typeof(EdgeDoc), "d");
+        var predicate = System.Linq.Expressions.Expression.Lambda<Func<EdgeDoc, bool>>(
+            System.Linq.Expressions.Expression.Equal(System.Linq.Expressions.Expression.Property(param, nameof(EdgeDoc.Title)), System.Linq.Expressions.Expression.Constant("X")),
+            param);
+        
+        var anyMethod = typeof(Queryable).GetMethods().First(m => m.Name == "Any" && m.GetParameters().Length == 2).MakeGenericMethod(typeof(EdgeDoc));
+        var expr = System.Linq.Expressions.Expression.Call(null, anyMethod, set.Expression, System.Linq.Expressions.Expression.Quote(predicate));
+
+        var groq = provider.GetSanityQuery<bool>(expr);
+
+        Assert.StartsWith("count(", groq);
+        Assert.EndsWith("> 0", groq.Trim());
+    }
+
+    [Fact]
+    public void Where_ContainsGuidList_TranslatesToInArrayOfStrings()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var guid = Guid.NewGuid();
+        var list = new List<Guid> { guid };
+        var queryable = set.Where(d => list.Contains(d.Guid!.Value));
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains($"guid in [\"{guid}\"]", groq);
+    }
+
+    [Fact]
+    public void Where_ContainsLongList_TranslatesToInArrayOfNumbers()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var list = new List<long> { 123L, 456L };
+        var queryable = set.Where(d => list.Contains(d.Number));
+
+        var groq = queryable.GetSanityQuery();
+
+        Assert.Contains("number in [123,456]", groq);
+    }
+
+    [Fact]
+    public void TransformOperand_DateTimeOffset_Works()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<EdgeDoc>(context, 3);
+        var dto = new DateTimeOffset(2023, 10, 5, 12, 0, 0, TimeSpan.FromHours(2));
+
+        var param = System.Linq.Expressions.Expression.Parameter(typeof(EdgeDoc), "d");
+        var body = System.Linq.Expressions.Expression.Equal(System.Linq.Expressions.Expression.Property(param, nameof(EdgeDoc.OffsetDate)), System.Linq.Expressions.Expression.Constant(dto, typeof(DateTimeOffset?)));
+        var lambda = System.Linq.Expressions.Expression.Lambda<Func<EdgeDoc, bool>>(body, param);
+        var whereQuery = set.Where(lambda);
+
+        var groq = whereQuery.GetSanityQuery();
+        Assert.Contains($"\"{dto:O}\"", groq);
+    }
+
     private static SanityDataContext CreateContext()
     {
         var options = new SanityOptions
@@ -182,6 +342,10 @@ public class SanityExpressionParserEdgeCasesTests
         public string[]? Tags { get; set; }
         public string? Title { get; set; }
         public NestedDoc? Nested { get; set; }
+        public int Number { get; set; }
+        public DateTime? Date { get; set; }
+        public DateTimeOffset? OffsetDate { get; set; }
+        public Guid? Guid { get; set; }
     }
 
     private sealed class NestedDoc

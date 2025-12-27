@@ -51,7 +51,7 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
     /// </summary>
     /// <param name="provider"></param>
     /// <param name="expression"></param>
-    public SanityDocumentSet(SanityQueryProvider provider, Expression expression)
+    internal SanityDocumentSet(SanityQueryProvider provider, Expression expression)
     {
         Context = provider.Context;
 

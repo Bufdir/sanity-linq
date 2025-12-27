@@ -109,6 +109,36 @@ public class SanityQueryBuilderTests
         Assert.Contains("_type=='reference'=>@->", proj);
     }
 
+    [Fact]
+    public void GetJoinProjection_ImageAsset_HandlesDereferencedAsset()
+    {
+        var proj = CallGetJoinProjection("image", "image", typeof(Image));
+        
+        // Expected to contain asset->{...}
+        Assert.Contains("asset->", proj);
+        Assert.Contains("image{", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_PropertyToSanityReference_HandlesDereferencedProperty()
+    {
+        var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRef));
+        
+        // Should contain the reference field with dereferencing switch
+        Assert.Contains("myRef{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_PropertyToListOfSanityReference_HandlesDereferencedProperty()
+    {
+        var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRefList));
+        
+        // Should contain the reference field with dereferencing switch
+        Assert.Contains("myRefs[][defined(@)]", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
     private static string CallGetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel = 0, int maxNestingLevel = 2)
     {
         var t = GetBuilderType();
@@ -130,4 +160,21 @@ public class SanityQueryBuilderTests
 
     private class Simple
     { }
+
+    private class AssetDoc : SanityDocument { }
+
+    private class Image
+    {
+        public SanityReference<AssetDoc>? Asset { get; set; }
+    }
+
+    private class PropertyWithRef
+    {
+        public SanityReference<Simple>? MyRef { get; set; }
+    }
+
+    private class PropertyWithRefList
+    {
+        public List<SanityReference<Simple>>? MyRefs { get; set; }
+    }
 }

@@ -17,7 +17,7 @@ using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
-public sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
+internal sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
 {
     public SanityDataContext Context { get; } = context;
     public Type DocType { get; } = docType;
@@ -43,7 +43,12 @@ public sealed class SanityQueryProvider(Type docType, SanityDataContext context,
         var elementType = TypeSystem.GetElementType(expression.Type);
         try
         {
-            var instance = Activator.CreateInstance(typeof(SanityDocumentSet<>).MakeGenericType(elementType), this, expression);
+            var instance = Activator.CreateInstance(
+                typeof(SanityDocumentSet<>).MakeGenericType(elementType),
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                null,
+                [this, expression],
+                null);
             return (IQueryable)(instance ?? throw new InvalidOperationException("Failed to create queryable instance."));
         }
         catch (TargetInvocationException tie)

@@ -16,7 +16,7 @@ public class SanityQueryBuilderEdgeCasesTests
         var t = builder.GetType();
 
         t.GetProperty("Skip")!.SetValue(builder, 7);
-        t.GetProperty("Take")!.SetValue(builder, 0);
+        t.GetProperty("Take")!.SetValue(builder, null);
 
         var miBuild = t.GetMethod("Build", BindingFlags.Public | BindingFlags.Instance)!;
         var result = (string)miBuild.Invoke(builder, [false, 2])!;

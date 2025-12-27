@@ -17,6 +17,8 @@ using System.Collections;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.Internal;
 
+// ReSharper disable MemberCanBePrivate.Global
+
 namespace Sanity.Linq.QueryProvider;
 
 internal class SanityExpressionParser(Expression expression, Type docType, int maxNestingLevel, Type? resultType = null) : ExpressionVisitor
@@ -229,14 +231,17 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string HandleContainsLegacy(MethodCallExpression e)
     {
-        if (e.Arguments.Count != 2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        if (e.Arguments.Count != 2) 
+            throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
         var memberName = TransformOperand(e.Arguments[0]);
         var simplifiedValue = Evaluator.PartialEval(e.Arguments[1]);
-        if (simplifiedValue is not ConstantExpression c2) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        if (simplifiedValue is not ConstantExpression c2) 
+            throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
         var valueObj = c2.Value;
-        if (valueObj == null) throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        if (valueObj == null) 
+            throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
         return c2.Type == typeof(string) || c2.Type == typeof(Guid)
             ? $"\"{valueObj}\" in {memberName}"

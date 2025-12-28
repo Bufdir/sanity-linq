@@ -186,9 +186,9 @@ public class SanityExpressionParserEdgeCasesTests
         var list = new List<string?> { "a", null, "b" };
         var queryable = set.Where(d => list.Contains(d.Title));
 
-        var groq = queryable.GetSanityQuery();
+        var groq = queryable.GetSanityQuery().Replace(" ", "").Replace("\r", "").Replace("\n", "");
 
-        Assert.Contains("title in [\"a\",\"b\"]", groq);
+        Assert.Contains("titlein[\"a\",\"b\"]", groq);
     }
 
     [Fact]
@@ -198,9 +198,9 @@ public class SanityExpressionParserEdgeCasesTests
         var set = new SanityDocumentSet<EdgeDoc>(context, 3);
         var queryable = set.OrderBy(d => d.Title).ThenByDescending(d => d.Number);
 
-        var groq = queryable.GetSanityQuery();
+        var groq = queryable.GetSanityQuery().Replace(" ", "").Replace("\r", "").Replace("\n", "");
 
-        Assert.Contains("order(title asc, number desc)", groq);
+        Assert.Contains("order(titleasc,numberdesc)", groq);
     }
 
     [Fact]
@@ -222,10 +222,10 @@ public class SanityExpressionParserEdgeCasesTests
         var set = new SanityDocumentSet<EdgeDoc>(context, 3);
         var queryable = set.Select(d => new { d.Title, Info = new { d.Number } });
 
-        var groq = queryable.GetSanityQuery();
+        var groq = queryable.GetSanityQuery().Replace(" ", "").Replace("\r", "").Replace("\n", "");
 
         Assert.Contains("title", groq);
-        Assert.Contains("\"info\":{number}", groq.Replace(" ", ""));
+        Assert.Contains("\"info\":{number}", groq);
     }
 
     [Fact]
@@ -291,9 +291,9 @@ public class SanityExpressionParserEdgeCasesTests
         var list = new List<Guid> { guid };
         var queryable = set.Where(d => list.Contains(d.Guid!.Value));
 
-        var groq = queryable.GetSanityQuery();
+        var groq = queryable.GetSanityQuery().Replace(" ", "").Replace("\r", "").Replace("\n", "");
 
-        Assert.Contains($"guid in [\"{guid}\"]", groq);
+        Assert.Contains($"guidin[\"{guid}\"]", groq);
     }
 
     [Fact]
@@ -304,9 +304,9 @@ public class SanityExpressionParserEdgeCasesTests
         var list = new List<long> { 123L, 456L };
         var queryable = set.Where(d => list.Contains(d.Number));
 
-        var groq = queryable.GetSanityQuery();
+        var groq = queryable.GetSanityQuery().Replace(" ", "").Replace("\r", "").Replace("\n", "");
 
-        Assert.Contains("number in [123,456]", groq);
+        Assert.Contains("numberin[123,456]", groq);
     }
 
     [Fact]

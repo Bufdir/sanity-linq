@@ -2,7 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.DTOs;
 using Sanity.Linq.QueryProvider;
 using Xunit;
 
@@ -81,6 +86,87 @@ public class SanityQueryProviderTests
         Assert.Contains("title == \"Hello\"", groq, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_Calls_Client_FetchAsync()
+    {
+        // Arrange
+        var expectedDoc = new MyDoc { Title = "AsyncResult" };
+        var testClient = new TestSanityClient
+        {
+            FetchResult = expectedDoc
+        };
+        var context = CreateContext(testClient);
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 3);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        var expression = set.Where(d => d.Title == "Test").Expression;
+
+        // Act
+        var result = await provider.ExecuteAsync<MyDoc>(expression);
+
+        // Assert
+        Assert.Same(expectedDoc, result);
+        Assert.True(testClient.FetchAsyncCalled);
+        Assert.Contains("title == \"Test\"", testClient.LastQuery);
+    }
+
+    [Fact]
+    public void Execute_Typed_Calls_ExecuteAsync()
+    {
+        // Arrange
+        var expectedDoc = new MyDoc { Title = "SyncResult" };
+        var testClient = new TestSanityClient
+        {
+            FetchResult = expectedDoc
+        };
+        var context = CreateContext(testClient);
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 3);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        var expression = set.Where(d => d.Title == "Test").Expression;
+
+        // Act
+        var result = provider.Execute<MyDoc>(expression);
+
+        // Assert
+        Assert.Same(expectedDoc, result);
+        Assert.True(testClient.FetchAsyncCalled);
+    }
+
+    [Fact]
+    public void Execute_Untyped_Calls_ExecuteAsync()
+    {
+        // Arrange
+        var expectedDoc = new MyDoc { Title = "UntypedResult" };
+        var testClient = new TestSanityClient
+        {
+            FetchResult = expectedDoc
+        };
+        var context = CreateContext(testClient);
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 3);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        var expression = set.Where(d => d.Title == "Test").Expression;
+
+        // Act
+        var result = provider.Execute(expression);
+
+        // Assert
+        Assert.Same(expectedDoc, result);
+        Assert.True(testClient.FetchAsyncCalled);
+    }
+
+    [Theory]
+    [InlineData("*[_type == \"movie\"]", "*[_type == \"movie\"]")]
+    [InlineData("*[_type == \"movie\"]{title, year}", "*[_type == \"movie\"]{\n  title,\n  year\n}")]
+    [InlineData("*[_type == \"movie\"]{title, \"actor\": actors[]->name}", "*[_type == \"movie\"]{\n  title,\n  \"actor\": actors[]->name\n}")]
+    public void PrettyPrintQuery_Formats_Query(string input, string expected)
+    {
+        // Act
+        var result = SanityQueryProvider.PrettyPrintQuery(input);
+
+        // Assert
+        // Standardize line endings for comparison
+        Assert.Equal(expected.Replace("\r\n", "\n"), result.Replace("\r\n", "\n"));
+    }
+
     private static SanityDataContext CreateContext()
     {
         var options = new SanityOptions
@@ -93,8 +179,37 @@ public class SanityQueryProviderTests
         return new SanityDataContext(options);
     }
 
+    private static SanityDataContext CreateContext(SanityClient client)
+    {
+        var context = CreateContext();
+        var field = typeof(SanityDataContext).GetField("<Client>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+        field?.SetValue(context, client);
+        return context;
+    }
+
     private sealed class MyDoc : SanityDocument
     {
         public string? Title { get; set; }
+    }
+
+    private sealed class TestSanityClient : SanityClient
+    {
+        public TestSanityClient() : base(new SanityOptions { ProjectId = "p", Dataset = "d" })
+        {
+        }
+
+        public object? FetchResult { get; set; }
+        public bool FetchAsyncCalled { get; private set; }
+        public string? LastQuery { get; private set; }
+
+        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
+        {
+            FetchAsyncCalled = true;
+            LastQuery = query;
+            return Task.FromResult(new SanityQueryResponse<TResult>
+            {
+                Result = (TResult)FetchResult!
+            });
+        }
     }
 }

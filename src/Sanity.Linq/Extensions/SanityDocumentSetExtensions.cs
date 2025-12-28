@@ -48,8 +48,7 @@ public static class SanityDocumentSetExtensions
             return source switch
             {
                 null => throw new ArgumentNullException(nameof(source)),
-                SanityDocumentSet<T> { Provider: SanityQueryProvider provider } => provider.GetSanityQuery<T>(
-                    source.Expression),
+                SanityDocumentSet<T> { Provider: SanityQueryProvider provider } => provider.GetSanityQuery<T>(source.Expression),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }

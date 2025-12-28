@@ -156,7 +156,9 @@ internal class SanityMethodCallTranslator(
         var (body, selectors) = ExtractSelectors(lambda.Body);
 
         var wasSilent = queryBuilder.IsSilent;
+        var wasFallback = queryBuilder.UseCoalesceFallback;
         queryBuilder.IsSilent = true;
+        queryBuilder.UseCoalesceFallback = false;
         try
         {
             var fieldPath = transformOperand(body).TrimStart('@').TrimStart('.');
@@ -227,6 +229,7 @@ internal class SanityMethodCallTranslator(
         finally
         {
             queryBuilder.IsSilent = wasSilent;
+            queryBuilder.UseCoalesceFallback = wasFallback;
         }
 
         return string.Empty;

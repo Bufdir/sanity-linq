@@ -49,6 +49,8 @@ internal sealed partial class SanityQueryBuilder
 
     public bool IsSilent { get; set; }
 
+    public bool UseCoalesceFallback { get; set; } = true;
+
     public int Skip { get; set; }
 
     public int? Take { get; set; }

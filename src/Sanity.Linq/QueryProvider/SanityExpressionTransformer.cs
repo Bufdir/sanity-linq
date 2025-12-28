@@ -6,13 +6,13 @@ namespace Sanity.Linq.QueryProvider;
 
 internal static class SanityExpressionTransformer
 {
-    public static string TransformOperand(Expression e, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler)
+    public static string TransformOperand(Expression e, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback = true)
     {
         var simplified = Evaluator.PartialEval(e);
         return simplified switch
         {
-            MemberExpression m => HandleMemberExpression(m, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler),
-            NewExpression nw => HandleNewExpression(nw, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler),
+            MemberExpression m => HandleMemberExpression(m, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback),
+            NewExpression nw => HandleNewExpression(nw, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback),
             BinaryExpression b => binaryExpressionHandler(b),
             UnaryExpression u => unaryExpressionHandler(u),
             MethodCallExpression mc => methodCallHandler(mc),
@@ -27,7 +27,7 @@ internal static class SanityExpressionTransformer
             ConstantExpression c when c.Type.IsArray || (c.Type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(c.Type)) => FormatEnumerable(c.Value as IEnumerable, c.Type),
             ConstantExpression c => c.Value?.ToString() ?? "null",
             ParameterExpression => "@",
-            NewArrayExpression na => "[" + string.Join(",", na.Expressions.Select(expr => TransformOperand(expr, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler))) + "]",
+            NewArrayExpression na => "[" + string.Join(",", na.Expressions.Select(expr => TransformOperand(expr, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))) + "]",
             _ => throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ")
         };
     }
@@ -83,7 +83,7 @@ internal static class SanityExpressionTransformer
                underlyingType == typeof(bool);
     }
 
-    private static string HandleMemberExpression(MemberExpression m, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler)
+    private static string HandleMemberExpression(MemberExpression m, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
         var member = m.Member;
 
@@ -91,14 +91,28 @@ internal static class SanityExpressionTransformer
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(Nullable<>) &&
             m.Expression != null)
-            return TransformOperand(m.Expression, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler);
+            return TransformOperand(m.Expression, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
         // Optimization: if we have SanityReference<T>.Value.Id, we can use coalesce(_ref, _key)
         if (member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM &&
             innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
-            var refPath = TransformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler);
+            var refPath = TransformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
             return refPath == "@" ? "coalesce(_ref, _key)" : $"coalesce({refPath}._ref, {refPath}._key)";
+        }
+
+        // General fallback for denormalized properties on SanityReference.Value
+        if (useCoalesceFallback && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM2 &&
+            innerM2.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        {
+            var jsonProperty = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
+                .Cast<JsonPropertyAttribute>().FirstOrDefault();
+            var propName = jsonProperty?.PropertyName ?? member.Name.ToCamelCase();
+            var refPath = TransformOperand(innerM2.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
+
+            return refPath == "@"
+                ? $"coalesce(@->{propName}, {propName})"
+                : $"coalesce({refPath}->{propName}, {refPath}.{propName})";
         }
 
         var memberPath = new List<string>();
@@ -124,10 +138,10 @@ internal static class SanityExpressionTransformer
             .Replace("->.", "->");
     }
 
-    private static string HandleNewExpression(NewExpression nw, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler)
+    private static string HandleNewExpression(NewExpression nw, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
         var args = nw.Arguments
-            .Select(arg => arg is NewExpression ? "{" + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler) + "}" : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler))
+            .Select(arg => arg is NewExpression ? "{" + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback) + "}" : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))
             .ToArray();
         var props = (nw.Members ?? Enumerable.Empty<MemberInfo>())
             .Select(prop => prop.Name.ToCamelCase())

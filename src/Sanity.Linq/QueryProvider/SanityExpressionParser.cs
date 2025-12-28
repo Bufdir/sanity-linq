@@ -180,7 +180,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         try
         {
             return SanityExpressionTransformer.TransformOperand(e, mc => TransformMethodCallExpression(mc),
-                TransformBinaryExpression, TransformUnaryExpression);
+                TransformBinaryExpression, TransformUnaryExpression, QueryBuilder.UseCoalesceFallback);
         }
         finally
         {

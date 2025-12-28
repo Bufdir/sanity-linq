@@ -18,7 +18,15 @@ internal sealed partial class SanityQueryBuilder
         { "(", "__0009__" },
         { ")", "__0010__" },
         { "@", "__0011__" },
-        { ".", "__0012__" }
+        { ".", "__0012__" },
+        { "==", "__0013__" },
+        { "!=", "__0014__" },
+        { "&&", "__0015__" },
+        { "||", "__0016__" },
+        { ">", "__0017__" },
+        { "<", "__0018__" },
+        { ">=", "__0019__" },
+        { "<=", "__0020__" }
     };
 
     public string AggregateFunction { get; set; } = "";
@@ -96,7 +104,11 @@ internal sealed partial class SanityQueryBuilder
     {
         var fields = GetPropertyProjectionList(refElement, nestingLevel, maxNestingLevel);
         var fieldList = JoinComma(fields);
-        return $"{fieldRef}[][defined(@)]{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        
+        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? "" : SanityConstants.ARRAY_INDICATOR;
+        var filter = fieldRef.Contains("defined") ? "" : SanityConstants.ARRAY_FILTER;
+        
+        return $"{fieldRef}{indicator}{filter}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
     }
 
     private static string HandleImageAssetCase(string fieldRef, Type propertyType, PropertyInfo assetProp, int nestingLevel, int maxNestingLevel)
@@ -116,7 +128,9 @@ internal sealed partial class SanityQueryBuilder
         var fields = GetPropertyProjectionList(imgElementType, nestingLevel, maxNestingLevel);
         var projectedFields = fields.Select(f => f.StartsWith("asset") ? $"asset->{{{SanityConstants.SPREAD_OPERATOR}}}" : f);
         var fieldList = JoinComma(projectedFields);
-        return $"{fieldRef}[]{{{fieldList}}}";
+        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? "" : SanityConstants.ARRAY_INDICATOR;
+        var filter = fieldRef.Contains("defined") ? "" : SanityConstants.ARRAY_FILTER;
+        return $"{fieldRef}{indicator}{filter}{{{fieldList}}}";
     }
 
     private static string HandleGenericObjectCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit)
@@ -124,7 +138,9 @@ internal sealed partial class SanityQueryBuilder
         var isEnumerable = TryGetEnumerableElementType(propertyType, out var enumerableType);
         var targetType = isEnumerable ? enumerableType! : propertyType;
         var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
-        var suffix = isEnumerable ? "[][defined(@)]" : "";
+        var indicator = isEnumerable && !fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? SanityConstants.ARRAY_INDICATOR : "";
+        var filter = isEnumerable && !fieldRef.Contains("defined") ? SanityConstants.ARRAY_FILTER : "";
+        var suffix = indicator + filter;
 
         if (fields.Count <= 0)
         {
@@ -291,6 +307,7 @@ internal sealed partial class SanityQueryBuilder
                 }
                 else
                 {
+                    // throw new Exception($"ENSURE PATH FAILED to find {part} in {obj.ToString(Formatting.None)}");
                     var nextJObject = new JObject();
                     obj[part] = nextJObject;
                     nextObjects.Add(nextJObject);
@@ -380,11 +397,24 @@ internal sealed partial class SanityQueryBuilder
 
     private static bool KeyMatchesPart(string key, string part, Dictionary<string, string> tokens)
     {
-        // Matches: exact key, quoted key, array variant (part[]), or dereferencing (part->)
-        return key == part
-               || key.StartsWith($"{tokens[SanityConstants.STRING_DELIMITER]}{part}{tokens[SanityConstants.STRING_DELIMITER]}")
-               || key.StartsWith(part + tokens[SanityConstants.ARRAY_INDICATOR])
-               || key.StartsWith(part + tokens[SanityConstants.DEREFERENCING_OPERATOR]);
+        if (key == part) return true;
+
+        // Simplify key: untokenize it and remove spaces
+        var k = key;
+        foreach (var token in tokens) k = k.Replace(token.Value, token.Key);
+        k = k.Replace(" ", "");
+
+        // Simplify part: remove spaces
+        var p = part.Replace(" ", "");
+
+        if (k == p) return true;
+
+        // Base name match (e.g. "topic" matches "topic[...]").
+        // We only care about the part before the first [ or -> or . (though dots shouldn't be here)
+        var kBase = k.Split('[', '-')[0]; 
+        var pBase = p.Split('[', '-')[0];
+
+        return kBase == pBase && !string.IsNullOrEmpty(kBase);
     }
 
     private static string[] ParseIncludePath(string includeKey, Dictionary<string, string> tokens)
@@ -392,7 +422,7 @@ internal sealed partial class SanityQueryBuilder
         return includeKey
             .Replace(SanityConstants.DEREFERENCING_OPERATOR, ".")
             .TrimEnd('.')
-            .Split('.');
+            .Split('.', StringSplitOptions.RemoveEmptyEntries);
     }
 
     private static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject, Dictionary<string, string> tokens)
@@ -408,21 +438,66 @@ internal sealed partial class SanityQueryBuilder
 
         foreach (var targetObj in targets)
         {
-            // Remove previous representations of a field in targetObj
-            var fieldsToReplace = new List<string>();
+            // Find existing field that matches 'part'
+            string? existingKey = null;
             foreach (var property in targetObj)
+            {
                 if (KeyMatchesPart(property.Key, part, tokens))
-                    fieldsToReplace.Add(property.Key);
-
-            foreach (var key in fieldsToReplace) targetObj.Remove(key);
-
-            // Set field to new projection in targetObj
-            foreach (var include in includeObject)
-                if (KeyMatchesPart(include.Key, part, tokens))
                 {
-                    targetObj[include.Key] = include.Value;
+                    existingKey = property.Key;
                     break;
                 }
+            }
+
+            // Find new field in includeObject that matches 'part'
+            string? newKey = null;
+            JToken? newValue = null;
+            foreach (var include in includeObject)
+            {
+                if (KeyMatchesPart(include.Key, part, tokens))
+                {
+                    newKey = include.Key;
+                    newValue = include.Value;
+                    break;
+                }
+            }
+
+            if (newValue == null) continue;
+
+            if (existingKey != null)
+            {
+                if (targetObj[existingKey] is JObject existingObj && newValue is JObject newObj)
+                {
+                    // Merge them!
+                    existingObj.Merge(newObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
+
+                    // Prefer the new key if it has a filter and the existing one doesn't (or has a simpler one)
+                    var untokenizedExisting = existingKey;
+                    var untokenizedNew = newKey ?? part;
+                    foreach (var token in tokens)
+                    {
+                        untokenizedExisting = untokenizedExisting.Replace(token.Value, token.Key);
+                        untokenizedNew = untokenizedNew.Replace(token.Value, token.Key);
+                    }
+
+                    if (untokenizedNew.Contains('[') && (!untokenizedExisting.Contains('[') || untokenizedNew.Length > untokenizedExisting.Length))
+                    {
+                        var val = targetObj[existingKey];
+                        targetObj.Remove(existingKey);
+                        targetObj[newKey ?? part] = val;
+                    }
+                }
+                else
+                {
+                    // Update value but keep existing key (preserving suffixes like [])
+                    targetObj[existingKey] = newValue;
+                }
+            }
+            else
+            {
+                // Add new
+                targetObj[newKey ?? part] = newValue;
+            }
         }
     }
 
@@ -486,8 +561,7 @@ internal sealed partial class SanityQueryBuilder
         // Replace @ (parameter reference) with ... (spread operator) for full entity selection
         var normalized = projection == "@" ? SanityConstants.SPREAD_OPERATOR : projection;
 
-        var expanded = ExpandIncludesInProjection(normalized, Includes)
-            .Replace($"{{{SanityConstants.SPREAD_OPERATOR}}}", "");
+        var expanded = ExpandIncludesInProjection(normalized, Includes);
 
         if (expanded == $"{{{SanityConstants.SPREAD_OPERATOR}}}") return; // Don't add an empty projection
 
@@ -536,6 +610,8 @@ internal sealed partial class SanityQueryBuilder
         if (JsonConvert.DeserializeObject(jsonProjection) is not JObject jObjectProjection || includes.Count == 0) 
             return projection;
 
+        // if (DateTime.Now.Year > 2000) throw new Exception($"DEBUG BEFORE: {jsonProjection}");
+
         // Use the includes provided via parameter, not the instance field
         foreach (var includeKey in includes.Keys.OrderBy(k => k))
         {
@@ -554,6 +630,7 @@ internal sealed partial class SanityQueryBuilder
 
         // Convert back to JSON
         jsonProjection = jObjectProjection.ToString(Formatting.None);
+        // if (DateTime.Now.Year > 2000) throw new Exception($"DEBUG AFTER: {jsonProjection}");
         // Convert JSON back to GROQ query
         projection = JsonToGroq(jsonProjection);
 

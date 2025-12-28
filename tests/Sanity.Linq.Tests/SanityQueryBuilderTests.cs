@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq;
 using Xunit;
 
 namespace Sanity.Linq.Tests;
@@ -143,7 +144,7 @@ public class SanityQueryBuilderTests
     {
         var t = GetBuilderType();
         var mi = t.GetMethod("GetJoinProjection", BindingFlags.Public | BindingFlags.Static)!;
-        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel])!;
+        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, false])!;
     }
 
     private static object CreateBuilder()
@@ -158,23 +159,23 @@ public class SanityQueryBuilderTests
         return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", throwOnError: true)!;
     }
 
-    private class Simple
+    public class Simple
     { }
 
-    private class AssetDoc : SanityDocument { }
+    public class AssetDoc : SanityDocument { }
 
-    private class Image
+    public class Image
     {
-        public SanityReference<AssetDoc>? Asset { get; set; }
+        [Include]        public SanityReference<AssetDoc>? Asset { get; set; }
     }
 
-    private class PropertyWithRef
+    public class PropertyWithRef
     {
-        public SanityReference<Simple>? MyRef { get; set; }
+        [Include]        public SanityReference<Simple>? MyRef { get; set; }
     }
 
-    private class PropertyWithRefList
+    public class PropertyWithRefList
     {
-        public List<SanityReference<Simple>>? MyRefs { get; set; }
+        [Include]        public List<SanityReference<Simple>>? MyRefs { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
@@ -75,7 +75,7 @@ public class SanityQueryBuilderEdgeCasesTests
     {
         var t = GetBuilderType();
         var mi = t.GetMethod("GetJoinProjection", BindingFlags.Public | BindingFlags.Static)!;
-        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel])!;
+        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, false])!;
     }
 
     // Helper: call static GetPropertyProjectionList

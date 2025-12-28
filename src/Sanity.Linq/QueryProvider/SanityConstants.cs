@@ -4,6 +4,7 @@ namespace Sanity.Linq.QueryProvider;
 internal static class SanityConstants
 {
     public const string ARRAY_INDICATOR = "[]";
+    public const string ARRAY_FILTER = "[defined(@)]";
     public const string COLON = ":";
     public const string DEREFERENCING_OPERATOR = "->";
     public const string DEREFERENCING_SWITCH = "_type=='reference'=>@->";

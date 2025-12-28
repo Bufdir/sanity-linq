@@ -1,4 +1,6 @@
+using System.Collections;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
@@ -6,7 +8,8 @@ internal static class SanityExpressionTransformer
 {
     public static string TransformOperand(Expression e, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler)
     {
-        return e switch
+        var simplified = Evaluator.PartialEval(e);
+        return simplified switch
         {
             MemberExpression m => HandleMemberExpression(m, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler),
             NewExpression nw => HandleNewExpression(nw, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler),
@@ -21,11 +24,37 @@ internal static class SanityExpressionTransformer
                 : $"\"{dt:O}\"",
             ConstantExpression { Value: DateTimeOffset dto } => $"\"{dto:O}\"",
             ConstantExpression c when c.Type == typeof(Guid) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
+            ConstantExpression c when c.Type.IsArray || (c.Type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(c.Type)) => FormatEnumerable(c.Value as IEnumerable, c.Type),
             ConstantExpression c => c.Value?.ToString() ?? "null",
             ParameterExpression => "@",
             NewArrayExpression na => "[" + string.Join(",", na.Expressions.Select(expr => TransformOperand(expr, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler))) + "]",
             _ => throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ")
         };
+    }
+
+    private static string FormatEnumerable(IEnumerable? enumerable, Type type)
+    {
+        if (enumerable == null) return "null";
+        if (typeof(IQueryable).IsAssignableFrom(type) && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SanityDocumentSet<>))
+        {
+             // This is a subquery. If we are here, Evaluator.PartialEval decided it's NOT evaluatable locally (correct).
+             // But somehow it reached here as a ConstantExpression? That would be strange.
+             // If it's a subquery, we should probably return its GROQ.
+             // But for now, let's just avoid the crash.
+             return "@"; 
+        }
+
+        var items = new List<string>();
+        foreach (var item in enumerable)
+        {
+            if (item == null) items.Add("null");
+            else if (item is string s) items.Add($"\"{EscapeString(s)}\"");
+            else if (item is bool b) items.Add(b.ToString().ToLower());
+            else if (item is int || item is long || item is double || item is float || item is decimal)
+                items.Add(string.Format(CultureInfo.InvariantCulture, "{0}", item));
+            else items.Add($"\"{EscapeString(item.ToString() ?? "")}\"");
+        }
+        return "[" + string.Join(",", items) + "]";
     }
 
     public static string EscapeString(string value)
@@ -63,7 +92,10 @@ internal static class SanityExpressionTransformer
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
-            memberPath.Add("->");
+            if (m.Expression is ParameterExpression)
+                memberPath.Add("@->");
+            else
+                memberPath.Add("->");
         }
         else
         {

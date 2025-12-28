@@ -14,6 +14,7 @@
 //  along with this program.
 
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.QueryProvider;
 
 namespace Sanity.Linq.JsonConverters;
 
@@ -33,32 +34,44 @@ public class SanityReferenceTypeConverter : JsonConverter
         }
 
         var res = (SanityObject)Activator.CreateInstance(type)!;
-        var refProp = type.GetProperty(nameof(SanityReference<>.Ref));
-        var typeProp = type.GetProperty(nameof(SanityReference<>.SanityType));
-        var keyProp = type.GetProperty(nameof(SanityReference<>.SanityKey));
-        var weakProp = type.GetProperty(nameof(SanityReference<>.Weak));
-        var valueProp = type.GetProperty(nameof(SanityReference<>.Value));
+        
+        var refVal = obj.GetValue("_ref")?.ToString() ?? obj.GetValue("_id")?.ToString();
+        var typeVal = obj.GetValue("_type")?.ToString();
+        var keyVal = obj.GetValue("_key")?.ToString();
+        
+        type.GetProperty(nameof(SanityReference<>.Ref))?.SetValue(res, refVal);
+        type.GetProperty(nameof(SanityReference<>.SanityType))?.SetValue(res, typeVal);
+        type.GetProperty(nameof(SanityReference<>.SanityKey))?.SetValue(res, keyVal);
+        type.GetProperty(nameof(SanityReference<>.Weak))?.SetValue(res, obj.GetValue("_weak")?.ToObject<bool?>());
 
-        if (refProp != null) refProp.SetValue(res, obj.GetValue("_ref")?.ToString() ?? obj.GetValue("_id")?.ToString());
-        if (typeProp != null) typeProp.SetValue(res, obj.GetValue("_type")?.ToString());
-        if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key")?.ToString());
-        if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak")?.ToObject<bool?>());
+        var derefToken = obj.Property(SanityConstants.DEREFERENCING_SWITCH)?.Value ??
+                         obj.Property(SanityConstants.DEREFERENCING_OPERATOR)?.Value ??
+                         obj.Properties().FirstOrDefault(p => p.Name.EndsWith("->"))?.Value;
 
-        // Decide if we should populate Value
-        // If it's dereferenced, it usually has more fields than the basic reference ones.
-        // Also if _ref is missing but it's a JObject, it's likely a dereferenced document.
-        bool isDereferenced = obj.Properties().Any(p =>
-            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id");
-
-        if (isDereferenced && valueProp != null)
+        if (derefToken is JObject derefObj)
         {
-            using (var subReader = obj.CreateReader())
+            foreach (var prop in derefObj.Properties())
             {
-                valueProp.SetValue(res, serializer.Deserialize(subReader, elemType));
+                obj[prop.Name] = prop.Value;
             }
         }
+
+        // Decide if we should populate Value
+        bool isDereferenced = obj.Properties().Any(p =>
+            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id"
+            && p.Name != SanityConstants.DEREFERENCING_SWITCH && p.Name != SanityConstants.DEREFERENCING_OPERATOR
+            && !p.Name.EndsWith("->"));
+
+        if (isDereferenced)
+        {
+            var val = obj.ToObject(elemType, serializer);
+            if (val is SanityDocument doc && string.IsNullOrEmpty(doc.Id))
+            {
+                doc.Id = (obj.GetValue("_id")?.ToString() ?? refVal ?? keyVal)!;
+            }
+            type.GetProperty(nameof(SanityReference<>.Value))?.SetValue(res, val);
+        }
         return res;
-        // Unable to deserialize
     }
 
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)

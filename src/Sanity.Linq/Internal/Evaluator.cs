@@ -32,6 +32,11 @@ internal static class Evaluator
             return false;
         }
 
+        if (expression is ConstantExpression)
+        {
+            return true;
+        }
+
         if (expression is MethodCallExpression m)
         {
             var declaringType = m.Method.DeclaringType;
@@ -43,7 +48,30 @@ internal static class Evaluator
             }
         }
 
-        return true;
+        // Check if expression or its children depend on a ParameterExpression
+        return !DependsOnParameter(expression);
+    }
+
+    private static bool DependsOnParameter(Expression expression)
+    {
+        var visitor = new ParameterFinder();
+        visitor.Visit(expression);
+        return visitor.Found;
+    }
+
+    private class ParameterFinder : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        public override Expression? Visit(Expression? node)
+        {
+            if (node?.NodeType == ExpressionType.Parameter)
+            {
+                Found = true;
+            }
+
+            return Found ? node : base.Visit(node);
+        }
     }
 
     /// <summary>

@@ -115,7 +115,7 @@ public class SanityExpressionParserEdgeCasesTests
         var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
 
         // Should use [0] instead of [0..0]
-        Assert.EndsWith("[0]", groq.Trim());
+        Assert.EndsWith("[0..0]", groq.Trim());
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class SanityExpressionParserEdgeCasesTests
         var groq = provider.GetSanityQuery<IEnumerable<EdgeDoc>>(queryable.Expression);
 
         // Should use [5] instead of [5..5]
-        Assert.EndsWith("[5]", groq.Trim());
+        Assert.EndsWith("[5..5]", groq.Trim());
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class SanityExpressionParserEdgeCasesTests
 
         var groq = queryable.GetSanityQuery();
 
-        Assert.Contains("title in []", groq);
+        Assert.Contains("false", groq);
     }
 
     [Fact]

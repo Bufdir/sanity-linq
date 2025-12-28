@@ -1,4 +1,6 @@
 using System.Collections;
+using Sanity.Linq;
+using Sanity.Linq.CommonTypes;
 using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
@@ -116,9 +118,14 @@ internal class SanityMethodCallTranslator(
         if (simplifiedExpression is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
 
         if (isTopLevel && !queryBuilder.IsSilent)
+        {
             queryBuilder.Constraints.Add(transformOperand(lambda.Body));
+            return transformOperand(e.Arguments[0]);
+        }
 
-        return transformOperand(e.Arguments[0]);
+        var operand = transformOperand(e.Arguments[0]);
+        var filter = transformOperand(lambda.Body);
+        return $"{operand}[{filter}]";
     }
 
     private string HandleSelect(MethodCallExpression e)
@@ -152,7 +159,7 @@ internal class SanityMethodCallTranslator(
         queryBuilder.IsSilent = true;
         try
         {
-            var fieldPath = transformOperand(body);
+            var fieldPath = transformOperand(body).TrimStart('@').TrimStart('.');
             var sourceName = GetIncludeSourceName(e, fieldPath);
             var propertyType = body.Type;
             var originalType = lambda.Parameters[0].Type;
@@ -163,15 +170,56 @@ internal class SanityMethodCallTranslator(
             var currentIncludePath = includePath;
             var currentType = propertyType;
 
-            foreach (var selector in selectors)
+            foreach (var selectorExpr in selectors)
             {
-                var selectorPath = transformOperand(selector.Body).Replace("->", "").Replace("@", "");
-                if (string.IsNullOrEmpty(selectorPath) || selectorPath is "." or "[@]")
+                if (selectorExpr is MethodCallExpression mc && mc.Method.Name == "OfType")
+                {
+                    var targetType = mc.Method.GetGenericArguments()[0];
+                    var currentElementType = TypeSystem.GetElementType(currentType);
+
+                    if (currentType != targetType && currentElementType != targetType)
+                    {
+                        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+                        {
+                            currentIncludePath += "[_type == \"reference\"]";
+                        }
+                        else
+                        {
+                            var sanityType = targetType.GetSanityTypeName();
+                            currentIncludePath += $"[_type == \"{sanityType}\"]";
+                        }
+                    }
+
+                    AddInclude(currentIncludePath, mc.Type, null, currentType);
+                    currentType = targetType;
                     continue;
+                }
 
-                selectorPath = selectorPath.Trim('.');
+                var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
+                var rawPath = transformOperand(selector.Body);
+                var selectorPath = rawPath.Replace("->", "").Replace("@", "").Replace("[]", "").Trim('.');
+                if (string.IsNullOrEmpty(selectorPath))
+                {
+                    if (rawPath.Contains("->"))
+                    {
+                        selectorPath = "->";
+                    }
+                    else
+                    {
+                        // Update currentType but don't add redundant include for same path
+                        currentType = selector.Body.Type;
+                        continue;
+                    }
+                }
 
-                currentIncludePath = $"{currentIncludePath}.{selectorPath}";
+                if (selectorPath.StartsWith("["))
+                {
+                    currentIncludePath = $"{currentIncludePath}{selectorPath}";
+                }
+                else
+                {
+                    currentIncludePath = $"{currentIncludePath}.{selectorPath}".TrimEnd('.');
+                }
                 AddInclude(currentIncludePath, selector.Body.Type, null, currentType);
                 currentType = selector.Body.Type;
             }
@@ -198,16 +246,18 @@ internal class SanityMethodCallTranslator(
         return lambda;
     }
 
-    private static (Expression body, List<LambdaExpression> selectors) ExtractSelectors(Expression body)
+    private static (Expression body, List<Expression> selectors) ExtractSelectors(Expression body)
     {
-        var selectors = new List<LambdaExpression>();
+        var selectors = new List<Expression>();
         while (body is MethodCallExpression m && (m.Method.Name == "Select" || m.Method.Name == "SelectMany" || m.Method.Name == "OfType"))
         {
             if (m.Arguments.Count >= 2)
             {
-                var arg = m.Arguments[1];
-                if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
-                if (arg is LambdaExpression selector) selectors.Add(selector);
+                selectors.Add(m.Arguments[1]);
+            }
+            else if (m.Method.Name == "OfType")
+            {
+                selectors.Add(m);
             }
 
             body = m.Arguments[0];
@@ -241,7 +291,19 @@ internal class SanityMethodCallTranslator(
     private string HandleOfType(MethodCallExpression e)
     {
         visit(e.Arguments[0]);
-        return transformOperand(e.Arguments[0]);
+        var operand = transformOperand(e.Arguments[0]);
+        var targetType = e.Method.GetGenericArguments()[0];
+
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        {
+            // Only include items that are actual references.
+            // We include anything with _type == "reference" even if _ref is missing,
+            // as some datasets use _key as the identifier for inline-expanded references.
+            return $"{operand}[_type == \"reference\"]";
+        }
+
+        var sanityType = targetType.GetSanityTypeName();
+        return $"{operand}[_type == \"{sanityType}\"]";
     }
 
     private static string HandleGetValue(MethodCallExpression e)
@@ -266,7 +328,11 @@ internal class SanityMethodCallTranslator(
 
         var leftAny = transformOperand(collectionExpr);
         var rightAny = transformOperand(valueExpr);
-        if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny)) return $"{rightAny} in {leftAny}";
+        if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny))
+        {
+            if (leftAny == "@") return $"{rightAny} in @";
+            return $"{rightAny} in {leftAny}";
+        }
 
         throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
     }
@@ -277,7 +343,12 @@ internal class SanityMethodCallTranslator(
         if (eval is not (IEnumerable ie and not string)) return null;
 
         var memberName = transformOperand(valueExpr);
-        return $"{memberName} in {JoinValues(ie)}";
+        var values = JoinValues(ie);
+        if (values == "[]") return "false";
+
+        // If memberName is @->id or something similar, it means we are checking a reference's ID
+        // In GROQ, "refID in [ids]" is more efficient than "count([ids][@ == refID]) > 0"
+        return $"{memberName} in {values}";
     }
 
     private string? HandlePropertyContainsConstant(Expression collectionExpr, Expression valueExpr)
@@ -380,8 +451,7 @@ internal class SanityMethodCallTranslator(
             if (!queryBuilder.IsSilent) queryBuilder.AggregateFunction = "count";
         }
 
-        var operand = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
-        if (e.Arguments.Count > 1) HandleWhere(e);
+        var operand = e.Arguments.Count > 1 ? HandleWhere(e) : (e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@");
 
         return $"count({operand})";
     }
@@ -404,10 +474,49 @@ internal class SanityMethodCallTranslator(
             }
         }
 
-        var operand = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
-        if (e.Arguments.Count > 1) HandleWhere(e);
+        if (e.Arguments.Count > 1)
+        {
+            var collectionExpr = e.Arguments[0];
+            var predicate = e.Arguments[1];
+            if (predicate is UnaryExpression { NodeType: ExpressionType.Quote } quote) predicate = quote.Operand;
 
-        return $"count({operand}) > 0";
+            if (predicate is LambdaExpression lambda)
+            {
+                 // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
+                 // If the collection can be evaluated locally, use HandleContains logic
+                 var simplifiedCollection = Evaluator.PartialEval(collectionExpr);
+                 if (simplifiedCollection is ConstantExpression)
+                 {
+                      // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
+                      // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
+                      if (lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
+                      {
+                           Expression? target = null;
+                           if (be.Left == lambda.Parameters[0]) target = be.Right;
+                           else if (be.Right == lambda.Parameters[0]) target = be.Left;
+
+                           if (target != null)
+                           {
+                                var collection = (simplifiedCollection as ConstantExpression)?.Value as IEnumerable ?? Array.Empty<object>();
+                                var targetOperand = transformOperand(target);
+                                var values = JoinValues(collection);
+                                return $"{targetOperand} in {values}";
+                           }
+                      }
+                 }
+            }
+
+            if (collectionExpr.Type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(collectionExpr.Type))
+            {
+                // Collection.Any(predicate) -> count(Collection[predicate]) > 0
+                var filter = HandleWhere(e);
+                // HandleWhere already returns the filtered operand if not top-level
+                return $"count({filter}) > 0";
+            }
+        }
+
+        var op = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
+        return $"count({op}) > 0";
     }
 
     private string HandleIsDefined(MethodCallExpression e)

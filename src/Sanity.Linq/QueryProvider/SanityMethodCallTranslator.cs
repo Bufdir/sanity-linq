@@ -206,7 +206,7 @@ internal class SanityMethodCallTranslator(
                     }
                     else
                     {
-                        // Update currentType but don't add redundant include for same path
+                        // Update the currentType but don't add redundant include for the same path
                         currentType = selector.Body.Type;
                         continue;
                     }

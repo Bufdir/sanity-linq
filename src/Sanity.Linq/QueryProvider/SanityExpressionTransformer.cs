@@ -36,24 +36,32 @@ internal static class SanityExpressionTransformer
     {
         if (enumerable == null) return "null";
         if (typeof(IQueryable).IsAssignableFrom(type) && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SanityDocumentSet<>))
-        {
-             // This is a subquery. If we are here, Evaluator.PartialEval decided it's NOT evaluatable locally (correct).
-             // But somehow it reached here as a ConstantExpression? That would be strange.
-             // If it's a subquery, we should probably return its GROQ.
-             // But for now, let's just avoid the crash.
-             return "@"; 
-        }
+            // This is a subquery. If we are here, Evaluator.PartialEval decided it's NOT evaluatable locally (correct).
+            // But somehow it reached here as a ConstantExpression? That would be strange.
+            // If it's a subquery, we should probably return its GROQ.
+            // But for now, let's just avoid the crash.
+            return "@";
 
         var items = new List<string>();
         foreach (var item in enumerable)
-        {
-            if (item == null) items.Add("null");
-            else if (item is string s) items.Add($"\"{EscapeString(s)}\"");
-            else if (item is bool b) items.Add(b.ToString().ToLower());
-            else if (item is int || item is long || item is double || item is float || item is decimal)
-                items.Add(string.Format(CultureInfo.InvariantCulture, "{0}", item));
-            else items.Add($"\"{EscapeString(item.ToString() ?? "")}\"");
-        }
+            switch (item)
+            {
+                case null:
+                    items.Add("null");
+                    break;
+                case string s:
+                    items.Add($"\"{EscapeString(s)}\"");
+                    break;
+                case bool b:
+                    items.Add(b.ToString().ToLower());
+                    break;
+                case int or long or double or float or decimal:
+                    items.Add(string.Format(CultureInfo.InvariantCulture, "{0}", item));
+                    break;
+                default:
+                    items.Add($"\"{EscapeString(item.ToString() ?? "")}\"");
+                    break;
+            }
         return "[" + string.Join(",", items) + "]";
     }
 
@@ -83,8 +91,14 @@ internal static class SanityExpressionTransformer
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(Nullable<>) &&
             m.Expression != null)
-        {
             return TransformOperand(m.Expression, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler);
+
+        // Optimization: if we have SanityReference<T>.Value.Id, we can use coalesce(_ref, _key)
+        if (member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM &&
+            innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        {
+            var refPath = TransformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler);
+            return refPath == "@" ? "coalesce(_ref, _key)" : $"coalesce({refPath}._ref, {refPath}._key)";
         }
 
         var memberPath = new List<string>();
@@ -92,10 +106,7 @@ internal static class SanityExpressionTransformer
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
-            if (m.Expression is ParameterExpression)
-                memberPath.Add("@->");
-            else
-                memberPath.Add("->");
+            memberPath.Add(m.Expression is ParameterExpression ? "@->" : "->");
         }
         else
         {
@@ -104,7 +115,8 @@ internal static class SanityExpressionTransformer
             memberPath.Add(jsonProperty?.PropertyName ?? member.Name.ToCamelCase());
         }
 
-        if (m.Expression is MemberExpression inner) memberPath.Add(TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler));
+        if (m.Expression is MemberExpression inner)
+            memberPath.Add(TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler));
 
         return memberPath
             .Aggregate((a1, a2) => a1 != "->" && a2 != "->" ? $"{a2}.{a1}" : $"{a2}{a1}")
@@ -121,7 +133,7 @@ internal static class SanityExpressionTransformer
             .Select(prop => prop.Name.ToCamelCase())
             .ToArray();
 
-        if (args.Length != props.Length) 
+        if (args.Length != props.Length)
             throw new Exception("Selections must be anonymous types without a constructor.");
 
         var projection = args

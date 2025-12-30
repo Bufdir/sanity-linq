@@ -18,7 +18,7 @@ using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
-internal sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : IQueryProvider
+internal sealed class SanityQueryProvider(Type docType, SanityDataContext context, int maxNestingLevel) : ISanityQueryProvider
 {
     public SanityDataContext Context { get; } = context;
     public Type DocType { get; } = docType;

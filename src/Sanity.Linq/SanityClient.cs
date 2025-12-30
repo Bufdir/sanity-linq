@@ -77,7 +77,7 @@ public class SanityClient
         return CommitMutationsInternalAsync<SanityMutationResponse<TDoc>>(mutations, returnIds, returnDocuments, visibility, cancellationToken);
     }
 
-    
+
     public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(query)) throw new ArgumentException("Query cannot be empty", nameof(query));
@@ -194,7 +194,7 @@ public class SanityClient
         var content = await response.GetResponseContentAndDebugAsync(_options.Debug, _logger);
 
         HandleCallback(content, callback);
-        
+
         var requestUri = response.RequestMessage?.RequestUri;
         if (response.IsSuccessStatusCode)
             try
@@ -231,8 +231,8 @@ public class SanityClient
 
     private static void HandleCallback(string content, ContentCallback? callback)
     {
-        if (string.IsNullOrEmpty(content) || callback == null) return;
-        
+        if (callback == null || string.IsNullOrEmpty(content)) return;
+
         var result = SanityResponseProcessor.ExtractResult(content);
         if (string.IsNullOrEmpty(result)) return;
         callback(result);

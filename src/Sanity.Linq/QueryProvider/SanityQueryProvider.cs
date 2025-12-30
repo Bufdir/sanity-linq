@@ -14,6 +14,7 @@
 //  along with this program.
 
 using Sanity.Linq.Internal;
+// ReSharper disable MemberCanBePrivate.Global
 
 namespace Sanity.Linq.QueryProvider;
 
@@ -107,9 +108,14 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
     /// </exception>
     public TResult Execute<TResult>(Expression expression)
     {
-        return ExecuteAsync<TResult>(expression).GetAwaiter().GetResult();
+        return ExecuteWithCallback<TResult>(expression, null);
     }
 
+    public TResult ExecuteWithCallback<TResult>(Expression expression, ContentCallback? callback = null)
+    {
+        return ExecuteWithCallbackAsync<TResult>(expression, callback).GetAwaiter().GetResult();
+    }
+    
     /// <summary>
     ///     Asynchronously executes the specified query expression and returns the result.
     /// </summary>
@@ -124,16 +130,21 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown if the <paramref name="expression" /> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the query execution fails.</exception>
-    public async Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
+    public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
+    {
+        return ExecuteWithCallbackAsync<TResult>(expression, null, cancellationToken);
+    }
+
+    public async Task<TResult> ExecuteWithCallbackAsync<TResult>(Expression expression, ContentCallback? callback = null, CancellationToken cancellationToken = default)
     {
         var query = GetSanityQuery<TResult>(expression);
 
         // Execute query
-        var result = await Context.Client.FetchAsync<TResult>(query, null, cancellationToken).ConfigureAwait(false);
+        var result = await Context.Client.FetchAsync<TResult>(query, null, callback, cancellationToken).ConfigureAwait(false);
 
         return result.Result;
     }
-
+    
     /// <summary>
     ///     Generates a Sanity query string based on the specified LINQ expression.
     /// </summary>

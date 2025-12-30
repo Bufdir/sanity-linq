@@ -192,17 +192,13 @@ public class SanityQueryProviderTests
         public string? Title { get; set; }
     }
 
-    private sealed class TestSanityClient : SanityClient
+    private sealed class TestSanityClient() : SanityClient(new SanityOptions { ProjectId = "p", Dataset = "d" })
     {
-        public TestSanityClient() : base(new SanityOptions { ProjectId = "p", Dataset = "d" })
-        {
-        }
-
         public object? FetchResult { get; set; }
         public bool FetchAsyncCalled { get; private set; }
         public string? LastQuery { get; private set; }
 
-        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
+        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
         {
             FetchAsyncCalled = true;
             LastQuery = query;

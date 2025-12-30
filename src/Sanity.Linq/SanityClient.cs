@@ -21,6 +21,9 @@ using Sanity.Linq.Exceptions;
 using Sanity.Linq.Internal;
 using Sanity.Linq.JsonConverters;
 using Sanity.Linq.Mutations;
+using Sanity.Linq.QueryProvider;
+
+// ReSharper disable MemberCanBePrivate.Global
 
 namespace Sanity.Linq;
 
@@ -74,7 +77,8 @@ public class SanityClient
         return CommitMutationsInternalAsync<SanityMutationResponse<TDoc>>(mutations, returnIds, returnDocuments, visibility, cancellationToken);
     }
 
-    public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
+    
+    public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(query)) throw new ArgumentException("Query cannot be empty", nameof(query));
         var oQuery = new SanityQuery
@@ -86,14 +90,14 @@ public class SanityClient
         var json = new StringContent(JsonConvert.SerializeObject(oQuery, Formatting.None, SerializerSettings), Encoding.UTF8, "application/json");
         var response = await _httpQueryClient.PostAsync($"data/query/{WebUtility.UrlEncode(_options.Dataset)}", json, cancellationToken).ConfigureAwait(false);
 
-        return await HandleHttpResponseAsync<SanityQueryResponse<TResult>>(response).ConfigureAwait(false);
+        return await HandleHttpResponseAsync<SanityQueryResponse<TResult>>(response, callback).ConfigureAwait(false);
     }
 
-    public virtual async Task<SanityDocumentsResponse<TDoc>> GetDocumentAsync<TDoc>(string id, CancellationToken cancellationToken = default)
+    public virtual async Task<SanityDocumentsResponse<TDoc>> GetDocumentAsync<TDoc>(string id, ContentCallback? callback = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(id)) throw new ArgumentException("Id cannot be empty", nameof(id));
         var response = await _httpQueryClient.GetAsync($"data/doc/{WebUtility.UrlEncode(_options.Dataset)}/{WebUtility.UrlEncode(id)}", cancellationToken).ConfigureAwait(false);
-        return await HandleHttpResponseAsync<SanityDocumentsResponse<TDoc>>(response).ConfigureAwait(false);
+        return await HandleHttpResponseAsync<SanityDocumentsResponse<TDoc>>(response, callback).ConfigureAwait(false);
     }
 
     private void Initialize()
@@ -185,10 +189,12 @@ public class SanityClient
         return await HandleHttpResponseAsync<TResult>(response).ConfigureAwait(false);
     }
 
-    protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response)
+    protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response, ContentCallback? callback = null)
     {
         var content = await response.GetResponseContentAndDebugAsync(_options.Debug, _logger);
 
+        HandleCallback(content, callback);
+        
         var requestUri = response.RequestMessage?.RequestUri;
         if (response.IsSuccessStatusCode)
             try
@@ -222,4 +228,15 @@ public class SanityClient
         if (value == null) return string.Empty;
         return value.Length <= maxLength ? value : value[..maxLength];
     }
+
+    private static void HandleCallback(string content, ContentCallback? callback)
+    {
+        if (string.IsNullOrEmpty(content) || callback == null) return;
+        
+        var result = SanityResponseProcessor.ExtractResult(content);
+        if (string.IsNullOrEmpty(result)) return;
+        callback(result);
+    }
 }
+
+public delegate void ContentCallback(string content);

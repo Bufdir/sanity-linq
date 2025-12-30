@@ -84,14 +84,21 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
 
     public async Task<IEnumerable<TDoc>> ExecuteAsync(CancellationToken cancellationToken = default)
     {
-        var results = await ((SanityQueryProvider)Provider).ExecuteAsync<IEnumerable<TDoc>>(Expression, cancellationToken).ConfigureAwait(false) ??
+        var results = await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<IEnumerable<TDoc>>(Expression, null, cancellationToken).ConfigureAwait(false) ??
+                      [];
+        return FilterResults(results);
+    }
+    
+    public async Task<IEnumerable<TDoc>> ExecuteWithCallBackAsync(ContentCallback? callback = null, CancellationToken cancellationToken = default)
+    {
+        var results = await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<IEnumerable<TDoc>>(Expression, callback, cancellationToken).ConfigureAwait(false) ??
                       [];
         return FilterResults(results);
     }
 
     public async Task<TDoc?> ExecuteSingleAsync(CancellationToken cancellationToken = default)
     {
-        var result = await ((SanityQueryProvider)Provider).ExecuteAsync<TDoc>(Expression, cancellationToken).ConfigureAwait(false);
+        var result = await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<TDoc>(Expression, null, cancellationToken).ConfigureAwait(false);
         return result;
     }
 
@@ -99,14 +106,14 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
     {
         var countMethod = TypeSystem.GetMethod(nameof(Queryable.Count)).MakeGenericMethod(typeof(TDoc));
         var exp = Expression.Call(null, countMethod, Expression);
-        return await ((SanityQueryProvider)Provider).ExecuteAsync<int>(exp, cancellationToken).ConfigureAwait(false);
+        return await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<int>(exp, null, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<long> ExecuteLongCountAsync(CancellationToken cancellationToken = default)
     {
         var countMethod = TypeSystem.GetMethod(nameof(Queryable.LongCount)).MakeGenericMethod(typeof(TDoc));
         var exp = Expression.Call(null, countMethod, Expression);
-        return await ((SanityQueryProvider)Provider).ExecuteAsync<long>(exp, cancellationToken).ConfigureAwait(false);
+        return await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<long>(exp, null, cancellationToken).ConfigureAwait(false);
     }
 
     public SanityDocumentSet<TDoc> Include<TProperty>(Expression<Func<TDoc, TProperty>> property)

@@ -902,7 +902,7 @@ public class SanityDocumentSetExtensionsTests
         public bool UploadFileCalled { get; private set; }
         public string LastQuery { get; private set; } = string.Empty;
 
-        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, CancellationToken cancellationToken = default)
+        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
         {
             FetchAsyncCalled = true;
             LastQuery = query;

@@ -160,7 +160,7 @@ public class SanityQueryProviderTests
     public void PrettyPrintQuery_Formats_Query(string input, string expected)
     {
         // Act
-        var result = SanityQueryProvider.PrettyPrintQuery(input);
+        var result = SanityQueryFormatter.Format(input);
 
         // Assert
         // Standardize line endings for comparison

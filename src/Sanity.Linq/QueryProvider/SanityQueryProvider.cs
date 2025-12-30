@@ -14,6 +14,7 @@
 //  along with this program.
 
 using Sanity.Linq.Internal;
+
 // ReSharper disable MemberCanBePrivate.Global
 
 namespace Sanity.Linq.QueryProvider;
@@ -108,14 +109,24 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
     /// </exception>
     public TResult Execute<TResult>(Expression expression)
     {
-        return ExecuteWithCallback<TResult>(expression, null);
+        return ExecuteWithCallback<TResult>(expression);
     }
 
     public TResult ExecuteWithCallback<TResult>(Expression expression, ContentCallback? callback = null)
     {
         return ExecuteWithCallbackAsync<TResult>(expression, callback).GetAwaiter().GetResult();
     }
-    
+
+    public async Task<TResult> ExecuteWithCallbackAsync<TResult>(Expression expression, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+    {
+        var query = GetSanityQuery<TResult>(expression);
+
+        // Execute query
+        var result = await Context.Client.FetchAsync<TResult>(query, null, callback, cancellationToken).ConfigureAwait(false);
+
+        return result.Result;
+    }
+
     /// <summary>
     ///     Asynchronously executes the specified query expression and returns the result.
     /// </summary>
@@ -135,16 +146,6 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
         return ExecuteWithCallbackAsync<TResult>(expression, null, cancellationToken);
     }
 
-    public async Task<TResult> ExecuteWithCallbackAsync<TResult>(Expression expression, ContentCallback? callback = null, CancellationToken cancellationToken = default)
-    {
-        var query = GetSanityQuery<TResult>(expression);
-
-        // Execute query
-        var result = await Context.Client.FetchAsync<TResult>(query, null, callback, cancellationToken).ConfigureAwait(false);
-
-        return result.Result;
-    }
-    
     /// <summary>
     ///     Generates a Sanity query string based on the specified LINQ expression.
     /// </summary>
@@ -166,103 +167,6 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
 
         var query = parser.BuildQuery();
 
-        return PrettyPrintQuery(query);
-    }
-
-    internal static string PrettyPrintQuery(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) return query;
-
-        var sb = new StringBuilder();
-        var indentLevel = 0;
-        var bracketLevel = 0;
-        var parenLevel = 0;
-        var inQuotes = false;
-        var quoteChar = '\0';
-
-        for (var i = 0; i < query.Length; i++)
-        {
-            var c = query[i];
-
-            if (c is '"' or '\'' && (i == 0 || query[i - 1] != '\\'))
-            {
-                if (!inQuotes)
-                {
-                    inQuotes = true;
-                    quoteChar = c;
-                }
-                else if (c == quoteChar)
-                {
-                    inQuotes = false;
-                }
-            }
-
-            if (inQuotes)
-            {
-                sb.Append(c);
-                continue;
-            }
-
-            switch (c)
-            {
-                case '{':
-                    var hadSpace = sb.Length > 0 && char.IsWhiteSpace(sb[^1]);
-                    while (sb.Length > 0 && char.IsWhiteSpace(sb[^1])) sb.Length--;
-                    if (hadSpace && sb.Length > 0 && sb[^1] != '\n') sb.Append(' ');
-                    sb.Append(c);
-                    sb.AppendLine();
-                    indentLevel++;
-                    sb.Append(new string(' ', indentLevel * 2));
-                    break;
-                case '}':
-                    while (sb.Length > 0 && char.IsWhiteSpace(sb[^1])) sb.Length--;
-                    sb.AppendLine();
-                    indentLevel--;
-                    sb.Append(new string(' ', indentLevel * 2));
-                    sb.Append(c);
-                    break;
-                case ',':
-                    while (sb.Length > 0 && char.IsWhiteSpace(sb[^1])) sb.Length--;
-                    sb.Append(c);
-                    if (bracketLevel == 0 && parenLevel == 0 && indentLevel > 0)
-                    {
-                        sb.AppendLine();
-                        sb.Append(new string(' ', indentLevel * 2));
-                        // Skip the next whitespace if we just added a newline
-                        if (i + 1 < query.Length && char.IsWhiteSpace(query[i + 1])) i++;
-                    }
-
-                    break;
-                case '[':
-                    bracketLevel++;
-                    sb.Append(c);
-                    break;
-                case ']':
-                    bracketLevel--;
-                    sb.Append(c);
-                    break;
-                case '(':
-                    parenLevel++;
-                    sb.Append(c);
-                    break;
-                case ')':
-                    parenLevel--;
-                    sb.Append(c);
-                    break;
-                default:
-                    if (char.IsWhiteSpace(c))
-                    {
-                        if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1]) && sb[^1] != '\n') sb.Append(' ');
-                    }
-                    else
-                    {
-                        sb.Append(c);
-                    }
-
-                    break;
-            }
-        }
-
-        return sb.ToString().Trim();
+        return SanityQueryFormatter.Format(query);
     }
 }

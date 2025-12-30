@@ -217,8 +217,7 @@ internal sealed partial class SanityQueryBuilder
 
     private static (string SourceName, string TargetName) ResolvePropertyNames(PropertyInfo prop)
     {
-        var targetName = (prop.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() as JsonPropertyAttribute)?.PropertyName
-                         ?? prop.Name.ToCamelCase();
+        var targetName = prop.GetJsonProperty();
         var includeAttr = prop.GetCustomAttributes<IncludeAttribute>(true).FirstOrDefault();
         var sourceName = !string.IsNullOrEmpty(includeAttr?.FieldName) ? includeAttr.FieldName : targetName;
         return (sourceName, targetName);
@@ -359,8 +358,7 @@ internal sealed partial class SanityQueryBuilder
     {
         assetProp = props.FirstOrDefault(p => p.PropertyType.IsGenericType
                                               && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                              && (p?.Name.ToLower() == "asset"
-                                                  || (p?.GetCustomAttributes<JsonPropertyAttribute>(true).FirstOrDefault()?.PropertyName?.Equals("asset")).GetValueOrDefault()));
+                                              && p.GetJsonProperty() == "asset");
         return assetProp != null;
     }
 
@@ -371,7 +369,7 @@ internal sealed partial class SanityQueryBuilder
                                                          && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)
                                                          && i.GetGenericArguments()[0].GetProperties().Any(p => p.PropertyType.IsGenericType
                                                                                                                 && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                                                                                                && (p?.Name.ToLower() == "asset" || (p?.GetCustomAttributes<JsonPropertyAttribute>(true).FirstOrDefault()?.PropertyName?.Equals("asset")).GetValueOrDefault())));
+                                                                                                                && p.GetJsonProperty() == "asset"));
         if (type == null) return false;
 
         elementType = type.GetGenericArguments()[0];

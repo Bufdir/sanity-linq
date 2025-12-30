@@ -2,13 +2,21 @@
 
 internal static class JsonPropertyAttributeExtensions
 {
+    private static readonly ConcurrentDictionary<MemberInfo, string?> Cache = new();
+
     public static string GetJsonProperty(this MemberInfo member)
+    {
+        return Cache.GetOrAdd(member, GetJsonPropertyOrCamelcase)
+               ?? throw new Exception($"Could not find JsonProperty attribute for member {member.Name}");
+    }
+
+    private static string GetJsonPropertyOrCamelcase(MemberInfo member)
     {
         var attr = GetJsonPropertyAttribute(member);
 
         return attr?.PropertyName ?? member.Name.ToCamelCase();
     }
-    
+
     private static JsonPropertyAttribute? GetJsonPropertyAttribute(MemberInfo member)
     {
         var attr = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
@@ -25,7 +33,7 @@ internal static class JsonPropertyAttributeExtensions
                 .Cast<JsonPropertyAttribute>().FirstOrDefault();
             if (attr != null) return attr;
         }
-        
+
         return null;
     }
 }

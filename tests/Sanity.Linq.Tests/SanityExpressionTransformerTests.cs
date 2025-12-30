@@ -116,6 +116,26 @@ public class SanityExpressionTransformerTests
         public SanityReference<TestDoc>? Ref { get; set; }
     }
 
+    public interface IInterfaceWithJsonProperty
+    {
+        [JsonProperty("_from_interface")]
+        string? InterfaceProp { get; set; }
+    }
+
+    private class DocWithInterface : IInterfaceWithJsonProperty
+    {
+        public string? InterfaceProp { get; set; }
+    }
+
+    [Fact]
+    public void TransformOperand_JsonPropertyOnInterface_ReturnsInterfaceJsonPropertyName()
+    {
+        var param = Expression.Parameter(typeof(DocWithInterface), "d");
+        var expr = Expression.Property(param, nameof(DocWithInterface.InterfaceProp));
+        var result = SanityExpressionTransformer.TransformOperand(expr, MethodCallHandler, BinaryExpressionHandler, UnaryExpressionHandler);
+        Assert.Equal("_from_interface", result);
+    }
+
     [Fact]
     public void TransformOperand_MemberExpression_ReturnsCamelCase()
     {

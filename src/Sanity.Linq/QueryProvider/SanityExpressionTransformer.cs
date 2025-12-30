@@ -62,6 +62,7 @@ internal static class SanityExpressionTransformer
                     items.Add($"\"{EscapeString(item.ToString() ?? "")}\"");
                     break;
             }
+
         return "[" + string.Join(",", items) + "]";
     }
 
@@ -105,9 +106,7 @@ internal static class SanityExpressionTransformer
         if (useCoalesceFallback && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM2 &&
             innerM2.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
-            var jsonProperty = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
-                .Cast<JsonPropertyAttribute>().FirstOrDefault();
-            var propName = jsonProperty?.PropertyName ?? member.Name.ToCamelCase();
+            var propName = GetJsonProperty(member);
             var refPath = TransformOperand(innerM2.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
             return refPath == "@"
@@ -124,9 +123,7 @@ internal static class SanityExpressionTransformer
         }
         else
         {
-            var jsonProperty = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
-                .Cast<JsonPropertyAttribute>().FirstOrDefault();
-            memberPath.Add(jsonProperty?.PropertyName ?? member.Name.ToCamelCase());
+            memberPath.Add(GetJsonProperty(member));
         }
 
         if (m.Expression is MemberExpression inner)
@@ -165,5 +162,33 @@ internal static class SanityExpressionTransformer
             ExpressionType.Convert => operandTransformer(u.Operand),
             _ => throw new Exception($"Unary expression of type {u.GetType()} and nodeType {u.NodeType} not supported. ")
         };
+    }
+
+    private static string GetJsonProperty(MemberInfo member)
+    {
+        var attr = GetJsonPropertyAttribute(member);
+
+        return attr?.PropertyName ?? member.Name.ToCamelCase();
+    }
+    
+    private static JsonPropertyAttribute? GetJsonPropertyAttribute(MemberInfo member)
+    {
+        var attr = member.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
+            .Cast<JsonPropertyAttribute>().FirstOrDefault();
+        if (attr != null) return attr;
+
+        if (member is not PropertyInfo prop || prop.DeclaringType == null) return null;
+
+        foreach (var @interface in prop.DeclaringType.GetInterfaces())
+        {
+            var interfaceProp = @interface.GetProperty(prop.Name);
+            if (interfaceProp == null) continue;
+            attr = interfaceProp.GetCustomAttributes(typeof(JsonPropertyAttribute), true)
+                .Cast<JsonPropertyAttribute>().FirstOrDefault();
+            if (attr != null) return attr;
+        }
+        
+        
+        return null;
     }
 }

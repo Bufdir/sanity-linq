@@ -1,9 +1,7 @@
 using System;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using Newtonsoft.Json;
-using Sanity.Linq;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.QueryProvider;
 using Xunit;

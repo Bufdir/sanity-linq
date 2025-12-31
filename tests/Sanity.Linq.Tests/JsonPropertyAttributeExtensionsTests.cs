@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Xunit;
 namespace Sanity.Linq.Tests;
 

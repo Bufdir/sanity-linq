@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Sanity.Linq.CommonTypes;
-using Sanity.Linq;
 using Xunit;
 
 namespace Sanity.Linq.Tests;
@@ -62,11 +61,29 @@ public class SanityQueryBuilderTests
         };
 
         // Invoke private ExpandIncludesInProjection via reflection
-        var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var expanded = (string)mi.Invoke(builder, new object[] { "author", paramIncludes })!;
+        var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var expanded = (string)mi.Invoke(null, new object[] { "author", paramIncludes })!;
         
         Assert.Contains("author", expanded);
         Assert.Contains("_type=='reference'=>@->", expanded);
+    }
+
+    [Fact]
+    public void GroqToJson_ShouldPreserveSpacesInStrings()
+    {
+        var t = GetBuilderType();
+        var mi = t.GetMethod("GroqToJson", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(mi);
+
+        // This simulates a projection that might contain a string with a space
+        var groq = "title == \"John Doe\"";
+        var json = (string)mi.Invoke(null, new object[] { groq })!;
+
+        var miJsonToGroq = t.GetMethod("JsonToGroq", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(miJsonToGroq);
+        var finalGroq = (string)miJsonToGroq.Invoke(null, new object[] { json })!;
+
+        Assert.Equal("title==\"John Doe\"", finalGroq);
     }
 
     [Fact]

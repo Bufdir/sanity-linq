@@ -7,9 +7,11 @@ namespace Sanity.Linq.QueryProvider;
 
 internal sealed partial class SanityQueryBuilder
 {
-    public string AggregateFunction { get; set; } = "";
+    private static readonly ConcurrentDictionary<(Type, int, int), string[]> ProjectionCache = new();
+    private static readonly ConcurrentDictionary<Type, string> DocTypeCache = new();
+    public string AggregateFunction { get; set; } = string.Empty;
 
-    public string AggregatePostFix { get; set; } = "";
+    public string AggregatePostFix { get; set; } = string.Empty;
 
     public List<string> Constraints { get; } = [];
     public List<string> PostFilters { get; } = [];
@@ -20,7 +22,7 @@ internal sealed partial class SanityQueryBuilder
 
     public List<string> Orderings { get; set; } = [];
 
-    public string Projection { get; set; } = "";
+    public string Projection { get; set; } = string.Empty;
 
     public Type? ResultType { get; set; }
 
@@ -51,7 +53,7 @@ internal sealed partial class SanityQueryBuilder
         // Build field reference (alias if needed)
         var fieldRef = sourceName == targetName || string.IsNullOrEmpty(targetName)
             ? sourceName
-            : $"\"{targetName}\":{sourceName}";
+            : $"{SanityConstants.STRING_DELIMITER}{targetName}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}{sourceName}";
 
         // String or primitive
         if (propertyType == typeof(string) || propertyType.IsPrimitive) return fieldRef;
@@ -78,7 +80,7 @@ internal sealed partial class SanityQueryBuilder
     {
         var fields = GetPropertyProjectionList(propertyType.GetGenericArguments()[0], nestingLevel, maxNestingLevel);
         var fieldList = JoinComma(fields);
-        return $"{fieldRef}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        return $"{fieldRef}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleListOfSanityReferenceCase(string fieldRef, Type refElement, int nestingLevel, int maxNestingLevel)
@@ -86,10 +88,10 @@ internal sealed partial class SanityQueryBuilder
         var fields = GetPropertyProjectionList(refElement, nestingLevel, maxNestingLevel);
         var fieldList = JoinComma(fields);
 
-        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? "" : SanityConstants.ARRAY_INDICATOR;
-        var filter = fieldRef.Contains(SanityConstants.DEFINED) ? "" : SanityConstants.ARRAY_FILTER;
+        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? string.Empty : SanityConstants.ARRAY_INDICATOR;
+        var filter = fieldRef.Contains(SanityConstants.DEFINED) ? string.Empty : SanityConstants.ARRAY_FILTER;
 
-        return $"{fieldRef}{indicator}{filter}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleImageAssetCase(string fieldRef, Type propertyType, PropertyInfo assetProp, int nestingLevel, int maxNestingLevel)
@@ -98,20 +100,20 @@ internal sealed partial class SanityQueryBuilder
         var nestedFields = GetPropertyProjectionList(assetProp.PropertyType, nestingLevel, maxNestingLevel);
         var projectedFields = fields
             .Select(f => f.StartsWith(SanityConstants.ASSET)
-                ? $"{SanityConstants.ASSET}{SanityConstants.DEREFERENCING_OPERATOR}{(nestedFields.Count > 0 ? "{" + JoinComma(nestedFields) + "}" : "")}"
+                ? $"{SanityConstants.ASSET}{SanityConstants.DEREFERENCING_OPERATOR}{(nestedFields.Count > 0 ? SanityConstants.OPEN_BRACE + JoinComma(nestedFields) + SanityConstants.CLOSE_BRACE : string.Empty)}"
                 : f);
         var fieldList = JoinComma(projectedFields);
-        return $"{fieldRef}{{{fieldList}}}";
+        return $"{fieldRef}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleListOfSanityImagesCase(string fieldRef, Type imgElementType, int nestingLevel, int maxNestingLevel)
     {
         var fields = GetPropertyProjectionList(imgElementType, nestingLevel, maxNestingLevel);
-        var projectedFields = fields.Select(f => f.StartsWith(SanityConstants.ASSET) ? $"{SanityConstants.ASSET}{SanityConstants.DEREFERENCING_OPERATOR}{{{SanityConstants.SPREAD_OPERATOR}}}" : f);
+        var projectedFields = fields.Select(f => f.StartsWith(SanityConstants.ASSET) ? SanityConstants.ASSET + SanityConstants.DEREFERENCING_OPERATOR + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + SanityConstants.CLOSE_BRACE : f);
         var fieldList = JoinComma(projectedFields);
-        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? "" : SanityConstants.ARRAY_INDICATOR;
-        var filter = fieldRef.Contains(SanityConstants.DEFINED) ? "" : SanityConstants.ARRAY_FILTER;
-        return $"{fieldRef}{indicator}{filter}{{{fieldList}}}";
+        var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? string.Empty : SanityConstants.ARRAY_INDICATOR;
+        var filter = fieldRef.Contains(SanityConstants.DEFINED) ? string.Empty : SanityConstants.ARRAY_FILTER;
+        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleGenericObjectCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit)
@@ -119,21 +121,21 @@ internal sealed partial class SanityQueryBuilder
         var isEnumerable = TryGetEnumerableElementType(propertyType, out var enumerableType);
         var targetType = isEnumerable ? enumerableType! : propertyType;
         var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
-        var indicator = isEnumerable && !fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? SanityConstants.ARRAY_INDICATOR : "";
-        var filter = isEnumerable && !fieldRef.Contains(SanityConstants.DEFINED) ? SanityConstants.ARRAY_FILTER : "";
+        var indicator = isEnumerable && !fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? SanityConstants.ARRAY_INDICATOR : string.Empty;
+        var filter = isEnumerable && !fieldRef.Contains(SanityConstants.DEFINED) ? SanityConstants.ARRAY_FILTER : string.Empty;
         var suffix = indicator + filter;
 
         if (fields.Count <= 0)
         {
-            if (isExplicit) return $"{fieldRef}{suffix}{{{SanityConstants.SPREAD_OPERATOR},{SanityConstants.DEREFERENCING_SWITCH + "{" + SanityConstants.SPREAD_OPERATOR + "}"}}}";
+            if (isExplicit) return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
 
-            return $"{fieldRef}{suffix}{{{SanityConstants.SPREAD_OPERATOR}}}";
+            return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.CLOSE_BRACE}";
         }
 
         var fieldList = JoinComma(fields);
-        if (isExplicit) return $"{fieldRef}{suffix}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
+        if (isExplicit) return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
 
-        return $"{fieldRef}{suffix}{{{fieldList}}}";
+        return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
     }
 
     /// <summary>
@@ -152,10 +154,12 @@ internal sealed partial class SanityQueryBuilder
     /// <exception cref="ArgumentNullException">Thrown if the <paramref name="type" /> parameter is null.</exception>
     public static List<string> GetPropertyProjectionList(Type type, int nestingLevel, int maxNestingLevel)
     {
-        if (nestingLevel == maxNestingLevel) return ["..."];
+        if (ProjectionCache.TryGetValue((type, nestingLevel, maxNestingLevel), out var cached)) return [..cached];
+
+        if (nestingLevel == maxNestingLevel) return [SanityConstants.SPREAD_OPERATOR];
 
         // "Include all" primitive types with a simple ...
-        var result = new List<string> { "..." };
+        var result = new List<string> { SanityConstants.SPREAD_OPERATOR };
 
         var properties = type.GetProperties().Where(p => p.CanWrite);
         foreach (var prop in properties)
@@ -175,6 +179,7 @@ internal sealed partial class SanityQueryBuilder
             result.Add(GetJoinProjection(sourceName, targetName, prop.PropertyType, nestingLevel + 1, maxNestingLevel));
         }
 
+        ProjectionCache.TryAdd((type, nestingLevel, maxNestingLevel), result.ToArray());
         return result;
     }
 
@@ -272,8 +277,27 @@ internal sealed partial class SanityQueryBuilder
         if (PostFilters.Count <= 0) return;
 
         sb.Append(SanityConstants.OPEN_BRACKET);
-        sb.Append(PostFilters.Distinct().Aggregate((c, n) => $"({c}) {SanityConstants.AND} ({n})"));
+        var first = true;
+        foreach (var filter in PostFilters)
+        {
+            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(filter).Append(SanityConstants.CHAR_CLOSE_PAREN);
+            first = false;
+        }
+
         sb.Append(SanityConstants.CLOSE_BRACKET);
+    }
+
+    public void AddConstraint(string constraint)
+    {
+        if (string.IsNullOrWhiteSpace(constraint)) return;
+        if (!Constraints.Contains(constraint)) Constraints.Add(constraint);
+    }
+
+    public void AddPostFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return;
+        if (!PostFilters.Contains(filter)) PostFilters.Add(filter);
     }
 
     private static void EnsurePath(JObject root, IReadOnlyList<string> parts, out List<JObject> parents)
@@ -378,27 +402,25 @@ internal sealed partial class SanityQueryBuilder
 
     private static string JoinComma(IEnumerable<string> parts)
     {
-        return string.Join(",", parts);
+        return string.Join(SanityConstants.COMMA, parts);
     }
 
     private static bool KeyMatchesPart(string key, string part)
     {
         if (key == part) return true;
 
-        var registry = SanityGroqTokenRegistry.Instance;
         // Simplify key: untokenize it and remove spaces
-        var k = registry.ReverseTokens.Aggregate(key, (current, token) => current.Replace(token.Key, token.Value));
-        k = k.Replace(" ", "");
+        var k = Untokenize(key).Replace(SanityConstants.SPACE, "");
 
         // Simplify part: remove spaces
-        var p = part.Replace(" ", "");
+        var p = part.Replace(SanityConstants.SPACE, "");
 
         if (k == p) return true;
 
         // Base name match (e.g. "topic" matches "topic[...]").
         // We only care about the part before the first [ or -> or . (though dots shouldn't be here)
-        var kBase = k.Split('[', '-')[0];
-        var pBase = p.Split('[', '-')[0];
+        var kBase = k.Split(SanityConstants.CHAR_OPEN_BRACKET, '-')[0];
+        var pBase = p.Split(SanityConstants.CHAR_OPEN_BRACKET, '-')[0];
 
         return kBase == pBase && !string.IsNullOrEmpty(kBase);
     }
@@ -407,8 +429,8 @@ internal sealed partial class SanityQueryBuilder
     {
         return includeKey
             .Replace(SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DOT)
-            .TrimEnd(SanityConstants.DOT[0])
-            .Split(SanityConstants.DOT[0], StringSplitOptions.RemoveEmptyEntries);
+            .TrimEnd(SanityConstants.CHAR_DOT)
+            .Split(SanityConstants.CHAR_DOT, StringSplitOptions.RemoveEmptyEntries);
     }
 
     private static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject)
@@ -418,7 +440,7 @@ internal sealed partial class SanityQueryBuilder
 
         foreach (var targetObj in targets)
             if (TryFindProperty(includeObject, part, out var newKey, out var newValue))
-                PerformMergeOrUpdate(targetObj, part, newKey, newValue, tokens);
+                PerformMergeOrUpdate(targetObj, part, newKey, newValue);
     }
 
     private static List<JObject> GetMergeTargets(JObject parent, IReadOnlyDictionary<string, string> tokens)
@@ -451,7 +473,7 @@ internal sealed partial class SanityQueryBuilder
         return false;
     }
 
-    private static void PerformMergeOrUpdate(JObject targetObj, string part, string newKey, JToken newValue, IReadOnlyDictionary<string, string> tokens)
+    private static void PerformMergeOrUpdate(JObject targetObj, string part, string newKey, JToken newValue)
     {
         if (TryFindProperty(targetObj, part, out var existingKey, out var existingValue))
         {
@@ -461,10 +483,10 @@ internal sealed partial class SanityQueryBuilder
                 existingObj.Merge(newObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
 
                 // Prefer the new key if it has a filter and the existing one doesn't (or has a simpler one)
-                var untokenizedExisting = Untokenize(existingKey, tokens);
-                var untokenizedNew = Untokenize(newKey, tokens);
+                var untokenizedExisting = Untokenize(existingKey);
+                var untokenizedNew = Untokenize(newKey);
 
-                if (untokenizedNew.Contains('[') && (!untokenizedExisting.Contains('[') || untokenizedNew.Length > untokenizedExisting.Length))
+                if (untokenizedNew.Contains(SanityConstants.CHAR_OPEN_BRACKET) && (!untokenizedExisting.Contains(SanityConstants.CHAR_OPEN_BRACKET) || untokenizedNew.Length > untokenizedExisting.Length))
                 {
                     targetObj.Remove(existingKey);
                     targetObj[newKey] = existingValue;
@@ -483,9 +505,44 @@ internal sealed partial class SanityQueryBuilder
         }
     }
 
-    private static string Untokenize(string key, IReadOnlyDictionary<string, string> tokens)
+    private static string Untokenize(string key)
     {
-        return tokens.Aggregate(key, (current, token) => current.Replace(token.Value, token.Key));
+        if (string.IsNullOrEmpty(key)) return key;
+        var reverseTokens = SanityGroqTokenRegistry.Instance.ReverseTokens;
+
+        var index = key.IndexOf("__GTK_", StringComparison.Ordinal);
+        if (index == -1) return key;
+
+        var sb = new StringBuilder();
+        var lastIndex = 0;
+        while (index != -1)
+        {
+            sb.Append(key, lastIndex, index - lastIndex);
+            if (index + 10 <= key.Length)
+            {
+                var token = key.Substring(index, 10);
+                if (reverseTokens.TryGetValue(token, out var val))
+                {
+                    sb.Append(val);
+                    lastIndex = index + 10;
+                }
+                else
+                {
+                    sb.Append("__GTK_");
+                    lastIndex = index + 6;
+                }
+            }
+            else
+            {
+                sb.Append("__GTK_");
+                lastIndex = index + 6;
+            }
+
+            index = key.IndexOf("__GTK_", lastIndex, StringComparison.Ordinal);
+        }
+
+        sb.Append(key, lastIndex, key.Length - lastIndex);
+        return sb.ToString();
     }
 
 
@@ -509,19 +566,24 @@ internal sealed partial class SanityQueryBuilder
     {
         if (DocType == null || DocType == typeof(object) || DocType == typeof(SanityDocument)) return;
 
-        var rootTypeName = DocType!.GetSanityTypeName();
-        try
+        var rootTypeName = DocTypeCache.GetOrAdd(DocType, type =>
         {
-            var dummyDoc = Activator.CreateInstance(DocType);
-            var typeName = dummyDoc?.SanityType();
-            if (!string.IsNullOrEmpty(typeName)) rootTypeName = typeName;
-        }
-        catch
-        {
-            // ignored
-        }
+            var name = type.GetSanityTypeName();
+            try
+            {
+                var dummyDoc = Activator.CreateInstance(type);
+                var typeName = dummyDoc?.SanityType();
+                if (!string.IsNullOrEmpty(typeName)) name = typeName;
+            }
+            catch
+            {
+                // ignored
+            }
 
-        Constraints.Insert(0, $"{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{rootTypeName}\"");
+            return name;
+        });
+
+        Constraints.Insert(0, $"{SanityConstants.TYPE}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{rootTypeName}{SanityConstants.STRING_DELIMITER}");
     }
 
     private void AppendConstraints(StringBuilder sb)
@@ -529,7 +591,14 @@ internal sealed partial class SanityQueryBuilder
         if (Constraints.Count <= 0) return;
 
         sb.Append(SanityConstants.OPEN_BRACKET);
-        sb.Append(Constraints.Distinct().Aggregate((c, n) => $"({c}) {SanityConstants.AND} ({n})"));
+        var first = true;
+        foreach (var constraint in Constraints)
+        {
+            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(constraint).Append(SanityConstants.CHAR_CLOSE_PAREN);
+            first = false;
+        }
+
         sb.Append(SanityConstants.CLOSE_BRACKET);
     }
 
@@ -537,8 +606,22 @@ internal sealed partial class SanityQueryBuilder
     {
         if (Orderings.Count == 0) return;
 
-        var distinctOrderings = string.Join(", ", Orderings.Distinct());
-        sb.Append($" | {SanityConstants.ORDER}({distinctOrderings})");
+        sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.PIPE).Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.ORDER).Append(SanityConstants.OPEN_PAREN);
+        var first = true;
+        foreach (var ordering in Orderings)
+        {
+            if (!first) sb.Append(SanityConstants.COMMA).Append(SanityConstants.SPACE);
+            sb.Append(ordering);
+            first = false;
+        }
+
+        sb.Append(SanityConstants.CLOSE_PAREN);
+    }
+
+    public void AddOrdering(string ordering)
+    {
+        if (string.IsNullOrWhiteSpace(ordering)) return;
+        if (!Orderings.Contains(ordering)) Orderings.Add(ordering);
     }
 
     private void AppendProjection(StringBuilder sb, string projection)
@@ -546,17 +629,17 @@ internal sealed partial class SanityQueryBuilder
         if (string.IsNullOrEmpty(projection)) return;
 
         // Replace @ (parameter reference) with ... (spread operator) for full entity selection
-        var normalized = projection == "@" ? SanityConstants.SPREAD_OPERATOR : projection;
+        var normalized = projection == SanityConstants.AT ? SanityConstants.SPREAD_OPERATOR : projection;
 
         var expanded = ExpandIncludesInProjection(normalized, Includes);
 
-        if (expanded == $"{{{SanityConstants.SPREAD_OPERATOR}}}") return; // Don't add an empty projection
+        if (expanded == SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + SanityConstants.CLOSE_BRACE) return; // Don't add an empty projection
 
-        if (expanded.StartsWith('{') && expanded.EndsWith('}'))
+        if (expanded.StartsWith(SanityConstants.OPEN_BRACE) && expanded.EndsWith(SanityConstants.CLOSE_BRACE))
         {
-            if (FlattenProjection && !expanded.StartsWith("{..."))
+            if (FlattenProjection && !expanded.StartsWith(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR))
             {
-                sb.Append("{..." + expanded.Substring(1));
+                sb.Append(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded.Substring(1));
                 return;
             }
 
@@ -565,49 +648,51 @@ internal sealed partial class SanityQueryBuilder
         }
 
         if (FlattenProjection)
-            sb.Append($" {{...{expanded}}}");
+            sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded + SanityConstants.CLOSE_BRACE);
         else
-            sb.Append($" {{{expanded}}}");
+            sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + expanded + SanityConstants.CLOSE_BRACE);
     }
 
     private void AppendSlices(StringBuilder sb)
     {
         if (!Take.HasValue)
         {
-            if (Skip > 0) sb.Append($" [{Skip}..{int.MaxValue}]");
+            if (Skip > 0) sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + int.MaxValue + SanityConstants.CLOSE_BRACKET);
             return;
         }
 
         switch (Take.Value)
         {
             case 1:
-                sb.Append(ExpectsArray ? $" [{Skip}..{Skip}]" : $" [{Skip}]");
+                sb.Append(ExpectsArray ? SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + Skip + SanityConstants.CLOSE_BRACKET : SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.CLOSE_BRACKET);
                 break;
             case 0:
-                sb.Append($" [{Skip}...{Skip}]");
+                sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.INCLUSIVE_RANGE + Skip + SanityConstants.CLOSE_BRACKET);
                 break;
             default:
-                sb.Append($" [{Skip}..{Skip + Take.Value - 1}]");
+                sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + (Skip + Take.Value - 1) + SanityConstants.CLOSE_BRACKET);
                 break;
         }
     }
 
-    private string ExpandIncludesInProjection(string projection, Dictionary<string, string> includes)
+    private static string ExpandIncludesInProjection(string projection, Dictionary<string, string>? includes)
     {
+        if (includes == null || includes.Count == 0) return projection;
+
         // Finds and replaces includes in a projection by converting projection (GROQ) to an equivalent JSON representation,
         // modifying the JSON replacement and then converting back to GROQ.
         //
         // The reason for converting to JSON is simply to be able to work with the query in a hierarchical structure.
         // This could also be done creating some sort of query tree object, which might be a more appropriate / cleaner solution.
 
-        var jsonProjection = GroqToJson($"{{{projection}}}");
-        if (JsonConvert.DeserializeObject(jsonProjection) is not JObject jObjectProjection || includes.Count == 0)
+        var jsonProjection = GroqToJson(SanityConstants.OPEN_BRACE + projection + SanityConstants.CLOSE_BRACE);
+        if (JsonConvert.DeserializeObject(jsonProjection) is not JObject jObjectProjection)
             return projection;
 
         // Use the includes provided via parameter, not the instance field
         foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key))
         {
-            var jsonInclude = GroqToJson($"{{{includeValue}}}");
+            var jsonInclude = GroqToJson(SanityConstants.OPEN_BRACE + includeValue + SanityConstants.CLOSE_BRACE);
             if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude) continue;
 
             var pathParts = ParseIncludePath(includeKey);
@@ -628,38 +713,116 @@ internal sealed partial class SanityQueryBuilder
 
     private static string GroqToJson(string groq)
     {
-        var json = groq.Replace(" ", "");
+        if (string.IsNullOrEmpty(groq)) return groq;
 
         var registry = SanityGroqTokenRegistry.Instance;
-        json = registry.SortedTokenKeys.Aggregate(json, (current, token) => current.Replace(token, registry.Tokens[token]));
-        json = json.Replace(SanityConstants.OPEN_BRACE, SanityConstants.COLON + SanityConstants.OPEN_BRACE).TrimStart(SanityConstants.COLON[0]);
+        var tokens = registry.Tokens;
+        var sortedKeys = registry.SortedTokenKeys;
+
+        var sb = new StringBuilder(groq.Length);
+        var inQuotes = false;
+        char? quoteChar = null;
+        var isEscaped = false;
+
+        for (var i = 0; i < groq.Length; i++)
+        {
+            var c = groq[i];
+
+            // 1. Try match token
+            string? matchedKey = null;
+            string? matchedToken = null;
+            foreach (var key in sortedKeys)
+                if (i + key.Length <= groq.Length)
+                {
+                    var match = true;
+                    for (var j = 0; j < key.Length; j++)
+                        if (groq[i + j] != key[j])
+                        {
+                            match = false;
+                            break;
+                        }
+
+                    if (match)
+                    {
+                        matchedKey = key;
+                        matchedToken = tokens[key];
+                        break;
+                    }
+                }
+
+            if (matchedKey != null)
+            {
+                if (matchedKey == SanityConstants.STRING_DELIMITER)
+                {
+                    if (!inQuotes)
+                    {
+                        inQuotes = true;
+                        quoteChar = '"';
+                        isEscaped = false;
+                    }
+                    else if (quoteChar == '"' && !isEscaped)
+                    {
+                        inQuotes = false;
+                        quoteChar = null;
+                    }
+                }
+
+                sb.Append(matchedToken);
+                i += matchedKey.Length - 1;
+                if (inQuotes) isEscaped = false;
+                continue;
+            }
+
+            // 2. Handle non-token characters
+            if (c == SanityConstants.STRING_DELIMITER[0] || c == SanityConstants.SINGLE_QUOTE[0])
+            {
+                if (!inQuotes)
+                {
+                    inQuotes = true;
+                    quoteChar = c;
+                    isEscaped = false;
+                }
+                else if (c == quoteChar && !isEscaped)
+                {
+                    inQuotes = false;
+                    quoteChar = null;
+                }
+            }
+
+            if (c == SanityConstants.SPACE[0] && !inQuotes) continue;
+
+            sb.Append(c);
+
+            if (inQuotes)
+            {
+                if (c == '\\') isEscaped = !isEscaped;
+                else isEscaped = false;
+            }
+        }
+
+        var json = sb.ToString();
+        json = json.Replace(SanityConstants.OPEN_BRACE, SanityConstants.COLON + SanityConstants.OPEN_BRACE);
+        if (json.StartsWith(SanityConstants.COLON)) json = json.Substring(1);
 
         // Replace variable names with valid JSON (e.g., convert myField to "myField": true)
         var reVariables = MyRegex();
-        var reMatches = reVariables.Matches(json);
-        while (reMatches.Count > 0)
-        {
-            foreach (Match match in reMatches)
-            {
-                var fieldName = match.Groups[2].Value;
-                var fieldReplacement = $"{SanityConstants.STRING_DELIMITER}{fieldName}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}true";
-                json = json.Replace(match.Value, match.Value.Replace(fieldName, fieldReplacement));
-            }
-
-            reMatches = reVariables.Matches(json);
-        }
+        json = reVariables.Replace(json, m => $"{m.Groups[1].Value}{SanityConstants.STRING_DELIMITER}{m.Groups[2].Value}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}{SanityConstants.TRUE}{m.Groups[3].Value}");
+        // Second pass to handle overlapping matches like {a,b,c}
+        json = reVariables.Replace(json, m => $"{m.Groups[1].Value}{SanityConstants.STRING_DELIMITER}{m.Groups[2].Value}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}{SanityConstants.TRUE}{m.Groups[3].Value}");
 
         return json;
     }
 
     private static string JsonToGroq(string json)
     {
+        if (string.IsNullOrEmpty(json)) return json;
+
         var groq = json
             .Replace(SanityConstants.COLON + SanityConstants.OPEN_BRACE, SanityConstants.OPEN_BRACE)
-            .Replace(SanityConstants.COLON + "true", "")
+            .Replace(SanityConstants.COLON + SanityConstants.TRUE, "")
             .Replace(SanityConstants.STRING_DELIMITER, "");
-        var registry = SanityGroqTokenRegistry.Instance;
-        return registry.ReverseTokens.Aggregate(groq, (current, token) => current.Replace(token.Key, token.Value));
+
+        return Untokenize(groq);
     }
 
     private string ResolveProjection(int maxNestingLevel)
@@ -670,7 +833,7 @@ internal sealed partial class SanityQueryBuilder
         var propertyList = GetPropertyProjectionList(ResultType ?? DocType ?? typeof(object), 0, maxNestingLevel);
         if (propertyList.Count > 0) return JoinComma(propertyList);
 
-        if (Includes.Keys.Count > 0) return string.Join(",", Includes.Keys);
+        if (Includes.Keys.Count > 0) return string.Join(SanityConstants.COMMA, Includes.Keys);
 
         return string.Empty;
     }
@@ -679,8 +842,8 @@ internal sealed partial class SanityQueryBuilder
     {
         if (string.IsNullOrEmpty(AggregateFunction)) return;
 
-        sb.Insert(0, AggregateFunction + "(");
-        sb.Append(')');
+        sb.Insert(0, AggregateFunction + SanityConstants.OPEN_PAREN);
+        sb.Append(SanityConstants.CLOSE_PAREN);
         if (!string.IsNullOrEmpty(AggregatePostFix)) sb.Append(AggregatePostFix);
     }
 

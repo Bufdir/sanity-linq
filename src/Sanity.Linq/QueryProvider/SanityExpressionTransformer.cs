@@ -1,6 +1,5 @@
 using System.Collections;
 using Sanity.Linq.CommonTypes;
-using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
@@ -8,8 +7,7 @@ internal static class SanityExpressionTransformer
 {
     public static string TransformOperand(Expression e, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback = true)
     {
-        var simplified = Evaluator.PartialEval(e);
-        return simplified switch
+        return e switch
         {
             MemberExpression m => HandleMemberExpression(m, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback),
             NewExpression nw => HandleNewExpression(nw, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback),
@@ -42,32 +40,60 @@ internal static class SanityExpressionTransformer
             // But for now, let's just avoid the crash.
             return SanityConstants.AT;
 
-        var items = new List<string>();
+        var sb = new StringBuilder();
+        sb.Append(SanityConstants.OPEN_BRACKET);
+        var first = true;
         foreach (var item in enumerable)
+        {
+            if (!first) sb.Append(SanityConstants.COMMA);
+            first = false;
+
             switch (item)
             {
                 case null:
-                    items.Add(SanityConstants.NULL);
+                    sb.Append(SanityConstants.NULL);
                     break;
                 case string s:
-                    items.Add($"{SanityConstants.STRING_DELIMITER}{EscapeString(s)}{SanityConstants.STRING_DELIMITER}");
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(s)).Append(SanityConstants.STRING_DELIMITER);
                     break;
                 case bool b:
-                    items.Add(b.ToString().ToLower());
+                    sb.Append(b ? SanityConstants.TRUE : SanityConstants.FALSE);
                     break;
                 case int or long or double or float or decimal:
-                    items.Add(string.Format(CultureInfo.InvariantCulture, "{0}", item));
+                    sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", item);
                     break;
                 default:
-                    items.Add($"{SanityConstants.STRING_DELIMITER}{EscapeString(item.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}");
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(item.ToString() ?? "")).Append(SanityConstants.STRING_DELIMITER);
                     break;
             }
-        return SanityConstants.OPEN_BRACKET + string.Join(SanityConstants.COMMA, items) + SanityConstants.CLOSE_BRACKET;
+        }
+
+        sb.Append(SanityConstants.CLOSE_BRACKET);
+        return sb.ToString();
     }
 
     public static string EscapeString(string value)
     {
-        return value.Replace("\\", "\\\\").Replace(SanityConstants.STRING_DELIMITER, "\\" + SanityConstants.STRING_DELIMITER);
+        if (string.IsNullOrEmpty(value)) return value;
+
+        var needsEscaping = false;
+        foreach (var c in value)
+            if (c is '\\' or '"')
+            {
+                needsEscaping = true;
+                break;
+            }
+
+        if (!needsEscaping) return value;
+
+        var sb = new StringBuilder(value.Length + 4);
+        foreach (var c in value)
+        {
+            if (c is '\\' or '"') sb.Append('\\');
+            sb.Append(c);
+        }
+
+        return sb.ToString();
     }
 
     private static bool IsNumericOrBoolType(Type type)
@@ -113,40 +139,48 @@ internal static class SanityExpressionTransformer
                 : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {refPath}{SanityConstants.DOT}{propName})";
         }
 
-        var memberPath = new List<string>();
-
+        string current;
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-            memberPath.Add(m.Expression is ParameterExpression ? SanityConstants.AT + SanityConstants.DEREFERENCING_OPERATOR : SanityConstants.DEREFERENCING_OPERATOR);
+            current = m.Expression is ParameterExpression ? SanityConstants.AT + SanityConstants.DEREFERENCING_OPERATOR : SanityConstants.DEREFERENCING_OPERATOR;
         else
-            memberPath.Add(member.GetJsonProperty());
+            current = member.GetJsonProperty();
 
-        if (m.Expression is MemberExpression inner)
-            memberPath.Add(TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler));
+        if (m.Expression is not MemberExpression inner) return current;
+        var parent = TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler);
 
-        return memberPath
-            .Aggregate((a1, a2) => a1 != SanityConstants.DEREFERENCING_OPERATOR && a2 != SanityConstants.DEREFERENCING_OPERATOR ? $"{a2}{SanityConstants.DOT}{a1}" : $"{a2}{a1}")
-            .Replace(SanityConstants.DOT + SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DEREFERENCING_OPERATOR)
-            .Replace(SanityConstants.DEREFERENCING_OPERATOR + SanityConstants.DOT, SanityConstants.DEREFERENCING_OPERATOR);
+        if (parent == SanityConstants.DEREFERENCING_OPERATOR || current == SanityConstants.DEREFERENCING_OPERATOR || parent.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || current.StartsWith(SanityConstants.DEREFERENCING_OPERATOR))
+            return parent + current;
+
+        return parent + SanityConstants.DOT + current;
     }
 
     private static string HandleNewExpression(NewExpression nw, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
-        var args = nw.Arguments
-            .Select(arg => arg is NewExpression ? SanityConstants.OPEN_BRACE + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback) + SanityConstants.CLOSE_BRACE : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))
-            .ToArray();
-        var props = (nw.Members ?? Enumerable.Empty<MemberInfo>())
-            .Select(prop => prop.Name.ToCamelCase())
-            .ToArray();
-
-        if (args.Length != props.Length)
+        var members = nw.Members;
+        if (members == null || nw.Arguments.Count != members.Count)
             throw new Exception("Selections must be anonymous types without a constructor.");
 
-        var projection = args
-            .Select((t, i) => t.Equals(props[i]) ? t : $"{SanityConstants.STRING_DELIMITER}{props[i]}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON} {t}")
-            .ToList();
+        var sb = new StringBuilder();
+        for (var i = 0; i < nw.Arguments.Count; i++)
+        {
+            if (i > 0) sb.Append(SanityConstants.COMMA).Append(SanityConstants.SPACE);
 
-        return string.Join(SanityConstants.COMMA + " ", projection);
+            var arg = nw.Arguments[i];
+            var propName = members[i].Name.ToCamelCase();
+
+            var transformedArg = arg is NewExpression
+                ? SanityConstants.OPEN_BRACE + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback) + SanityConstants.CLOSE_BRACE
+                : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
+
+            if (transformedArg == propName)
+                sb.Append(transformedArg);
+            else
+                sb.Append(SanityConstants.STRING_DELIMITER).Append(propName).Append(SanityConstants.STRING_DELIMITER)
+                    .Append(SanityConstants.COLON).Append(SanityConstants.SPACE).Append(transformedArg);
+        }
+
+        return sb.ToString();
     }
 
     public static string TransformUnaryExpression(UnaryExpression u, Func<Expression, string> operandTransformer)

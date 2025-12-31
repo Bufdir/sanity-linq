@@ -1,4 +1,4 @@
-﻿// Copy-write 2018 Oslofjord Operations AS
+// Copy-write 2018 Oslofjord Operations AS
 
 // This file is part of Sanity LINQ (https://github.com/oslofjord/sanity-linq).
 
@@ -22,25 +22,24 @@ namespace Sanity.Linq.QueryProvider;
 
 internal class SanityExpressionParser(Expression expression, Type docType, int maxNestingLevel, Type? resultType = null) : ExpressionVisitor
 {
+    private readonly SanityQueryBuilder _queryBuilder = new()
+    {
+        DocType = docType,
+        ResultType = resultType != null ? TypeSystem.GetElementType(resultType) : docType,
+        ExpectsArray = resultType != null && resultType != typeof(string) && typeof(IEnumerable).IsAssignableFrom(resultType)
+    };
+
     private readonly HashSet<Expression> _visited = [];
-    public Type DocType { get; } = docType;
+    private SanityMethodCallTranslator? _nestedTranslator;
+
+    private SanityMethodCallTranslator? _topLevelTranslator;
+
+
     public Expression Expression { get; } = expression;
     public int MaxNestingLevel { get; set; } = maxNestingLevel;
-    public Type ResultType { get; } = resultType != null ? TypeSystem.GetElementType(resultType) : docType;
-    public bool ExpectsArray { get; } = resultType != null && resultType != typeof(string) && typeof(IEnumerable).IsAssignableFrom(resultType);
-    private SanityQueryBuilder QueryBuilder { get; set; } = new();
 
     public string BuildQuery(bool includeProjections = true)
     {
-        //Initialize query builder
-        QueryBuilder = new SanityQueryBuilder
-        {
-            // Add constraint for root type
-            DocType = DocType,
-            ResultType = ResultType,
-            ExpectsArray = ExpectsArray
-        };
-
         // Parse Query
         var expression = Evaluator.PartialEval(Expression);
         if (expression is MethodCallExpression or LambdaExpression)
@@ -48,7 +47,7 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             Visit(expression);
 
         // Build query
-        var query = QueryBuilder.Build(includeProjections, MaxNestingLevel);
+        var query = _queryBuilder.Build(includeProjections, MaxNestingLevel);
         return query;
     }
 
@@ -68,27 +67,26 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private LambdaExpression HandleVisitLambda(LambdaExpression l)
     {
-        var simplified = (LambdaExpression)Evaluator.PartialEval(l);
-        var wasSilent = QueryBuilder.IsSilent;
-        QueryBuilder.IsSilent = true;
+        var wasSilent = _queryBuilder.IsSilent;
+        _queryBuilder.IsSilent = true;
         try
         {
-            switch (simplified.Body)
+            switch (l.Body)
             {
                 case BinaryExpression b:
-                    HandleVisitBinary(b);
+                    _queryBuilder.AddConstraint(TransformBinaryExpression(b));
                     break;
                 case UnaryExpression u:
-                    HandleVisitUnary(u);
+                    _queryBuilder.AddConstraint(TransformUnaryExpression(u));
                     break;
                 case MethodCallExpression m:
-                    QueryBuilder.Constraints.Add(TransformMethodCallExpression(m));
+                    _queryBuilder.AddConstraint(TransformMethodCallExpression(m));
                     break;
             }
         }
         finally
         {
-            QueryBuilder.IsSilent = wasSilent;
+            _queryBuilder.IsSilent = wasSilent;
         }
 
         return l;
@@ -96,15 +94,15 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private BinaryExpression HandleVisitBinary(BinaryExpression b)
     {
-        var wasSilent = QueryBuilder.IsSilent;
-        QueryBuilder.IsSilent = true;
+        var wasSilent = _queryBuilder.IsSilent;
+        _queryBuilder.IsSilent = true;
         try
         {
-            QueryBuilder.Constraints.Add(TransformBinaryExpression(b));
+            _queryBuilder.AddConstraint(TransformBinaryExpression(b));
         }
         finally
         {
-            QueryBuilder.IsSilent = wasSilent;
+            _queryBuilder.IsSilent = wasSilent;
         }
 
         return b;
@@ -112,15 +110,15 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private UnaryExpression HandleVisitUnary(UnaryExpression u)
     {
-        var wasSilent = QueryBuilder.IsSilent;
-        QueryBuilder.IsSilent = true;
+        var wasSilent = _queryBuilder.IsSilent;
+        _queryBuilder.IsSilent = true;
         try
         {
-            QueryBuilder.Constraints.Add(TransformUnaryExpression(u));
+            _queryBuilder.AddConstraint(TransformUnaryExpression(u));
         }
         finally
         {
-            QueryBuilder.IsSilent = wasSilent;
+            _queryBuilder.IsSilent = wasSilent;
         }
 
         return u;
@@ -145,9 +143,9 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
         return right switch
         {
-            SanityConstants.NULL when op == SanityConstants.EQUALS => $"(!({SanityConstants.DEFINED}({left})) || {left} {op} {right})",
-            SanityConstants.NULL when op == SanityConstants.NOT_EQUALS => $"({SanityConstants.DEFINED}({left}) && {left} {op} {right})",
-            _ => $"{left} {op} {right}"
+            SanityConstants.NULL when op == SanityConstants.EQUALS => $"{SanityConstants.OPEN_PAREN}{SanityConstants.NOT}{SanityConstants.OPEN_PAREN}{SanityConstants.DEFINED}{SanityConstants.OPEN_PAREN}{left}{SanityConstants.CLOSE_PAREN}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.OR}{SanityConstants.SPACE}{left}{SanityConstants.SPACE}{op}{SanityConstants.SPACE}{right}{SanityConstants.CLOSE_PAREN}",
+            SanityConstants.NULL when op == SanityConstants.NOT_EQUALS => $"{SanityConstants.OPEN_PAREN}{SanityConstants.DEFINED}{SanityConstants.OPEN_PAREN}{left}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.AND}{SanityConstants.SPACE}{left}{SanityConstants.SPACE}{op}{SanityConstants.SPACE}{right}{SanityConstants.CLOSE_PAREN}",
+            _ => $"{left}{SanityConstants.SPACE}{op}{SanityConstants.SPACE}{right}"
         };
     }
 
@@ -169,22 +167,24 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
 
     private string TransformMethodCallExpression(MethodCallExpression e, bool isTopLevel = false)
     {
-        var translator = new SanityMethodCallTranslator(QueryBuilder, TransformOperand, Visit, isTopLevel);
+        var translator = isTopLevel
+            ? _topLevelTranslator ??= new SanityMethodCallTranslator(_queryBuilder, TransformOperand, Visit, true)
+            : _nestedTranslator ??= new SanityMethodCallTranslator(_queryBuilder, TransformOperand, Visit);
         return translator.Translate(e);
     }
 
     private string TransformOperand(Expression e)
     {
-        var wasSilent = QueryBuilder.IsSilent;
-        QueryBuilder.IsSilent = true;
+        var wasSilent = _queryBuilder.IsSilent;
+        _queryBuilder.IsSilent = true;
         try
         {
             return SanityExpressionTransformer.TransformOperand(e, mc => TransformMethodCallExpression(mc),
-                TransformBinaryExpression, TransformUnaryExpression, QueryBuilder.UseCoalesceFallback);
+                TransformBinaryExpression, TransformUnaryExpression, _queryBuilder.UseCoalesceFallback);
         }
         finally
         {
-            QueryBuilder.IsSilent = wasSilent;
+            _queryBuilder.IsSilent = wasSilent;
         }
     }
 

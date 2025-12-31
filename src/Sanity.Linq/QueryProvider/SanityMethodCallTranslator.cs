@@ -64,7 +64,7 @@ internal class SanityMethodCallTranslator(
                 return HandleIsDefined(e);
 
             case "IsDraft":
-                return $"{SanityConstants.ID} {SanityConstants.IN} {SanityConstants.PATH}(\"drafts.**\")";
+                return $"{SanityConstants.ID} {SanityConstants.IN} {SanityConstants.PATH}({SanityConstants.STRING_DELIMITER}{SanityConstants.DRAFTS_PATH}{SanityConstants.STRING_DELIMITER})";
 
             case "Cast":
                 visit(e.Arguments[0]);
@@ -113,17 +113,16 @@ internal class SanityMethodCallTranslator(
         var arg = e.Arguments[1];
         if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
 
-        var simplifiedExpression = Evaluator.PartialEval(arg);
-        if (simplifiedExpression is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
+        if (arg is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
 
         var filter = transformOperand(lambda.Body);
 
         if (isTopLevel && !queryBuilder.IsSilent)
         {
             if (!string.IsNullOrEmpty(queryBuilder.Projection))
-                queryBuilder.PostFilters.Add(filter);
+                queryBuilder.AddPostFilter(filter);
             else
-                queryBuilder.Constraints.Add(filter);
+                queryBuilder.AddConstraint(filter);
 
             return transformOperand(e.Arguments[0]);
         }
@@ -141,8 +140,7 @@ internal class SanityMethodCallTranslator(
         var arg = e.Arguments[1];
         if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
 
-        var simplifiedExpression = Evaluator.PartialEval(arg);
-        if (simplifiedExpression is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
+        if (arg is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
 
         if (lambda.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
@@ -214,12 +212,12 @@ internal class SanityMethodCallTranslator(
         {
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
             {
-                currentIncludePath += $"[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{SanityConstants.REFERENCE}\"]";
+                currentIncludePath += $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
             else
             {
                 var sanityType = targetType.GetSanityTypeName();
-                currentIncludePath += $"[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{sanityType}\"]";
+                currentIncludePath += $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
         }
 
@@ -293,10 +291,8 @@ internal class SanityMethodCallTranslator(
     private static string GetIncludeSourceName(MethodCallExpression e, string targetName)
     {
         if (e.Arguments.Count >= 3)
-        {
-            var sourceNameExpr = Evaluator.PartialEval(e.Arguments[2]);
-            if (sourceNameExpr is ConstantExpression { Value: string s }) return s;
-        }
+            if (e.Arguments[2] is ConstantExpression { Value: string s })
+                return s;
 
         return targetName.Split('.').Last();
     }
@@ -311,18 +307,17 @@ internal class SanityMethodCallTranslator(
             // Only include items that are actual references.
             // We include anything with _type == "reference" even if _ref is missing,
             // as some datasets use _key as the identifier for inline-expanded references.
-            return $"{operand}[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{SanityConstants.REFERENCE}\"]";
+            return $"{operand}{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
 
         var sanityType = targetType.GetSanityTypeName();
-        return $"{operand}[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{sanityType}\"]";
+        return $"{operand}{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
     }
 
     private static string HandleGetValue(MethodCallExpression e)
     {
         if (e.Arguments.Count <= 0) throw new Exception("Could not evaluate GetValue method");
 
-        var simplifiedExpression = Evaluator.PartialEval(e.Arguments[1]);
-        if (simplifiedExpression is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
+        if (e.Arguments[1] is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
 
         var fieldName = c.Value?.ToString() ?? "";
         return $"{fieldName}";
@@ -354,7 +349,7 @@ internal class SanityMethodCallTranslator(
 
         var memberName = transformOperand(valueExpr);
         var values = JoinValues(ie);
-        if (values == "[]") return "false";
+        if (values == SanityConstants.OPEN_BRACKET + SanityConstants.CLOSE_BRACKET) return SanityConstants.FALSE;
 
         // If the memberName is @->id or something similar, it means we are checking a reference's ID
         // In GROQ, "refID in [ids]" is more efficient than "count([ids][@ == refID]) > 0"
@@ -365,15 +360,14 @@ internal class SanityMethodCallTranslator(
     {
         if (collectionExpr is not MemberExpression) return null;
 
-        var simplifiedValue = Evaluator.PartialEval(valueExpr);
-        if (simplifiedValue is not ConstantExpression { Value: not null } c2) return null;
+        if (valueExpr is not ConstantExpression { Value: not null } c2) return null;
 
         var memberName = transformOperand(collectionExpr);
         var valStr = c2.Value.ToString() ?? "";
         if (c2.Type != typeof(string) && c2.Type != typeof(Guid)) return $"{valStr} {SanityConstants.IN} {memberName}";
 
         valStr = SanityExpressionTransformer.EscapeString(valStr);
-        return $"\"{valStr}\" {SanityConstants.IN} {memberName}";
+        return $"{SanityConstants.STRING_DELIMITER}{valStr}{SanityConstants.STRING_DELIMITER} {SanityConstants.IN} {memberName}";
     }
 
     private string? HandlePropertyContainsProperty(Expression collectionExpr, Expression valueExpr)
@@ -393,17 +387,7 @@ internal class SanityMethodCallTranslator(
 
     private static object? TryEvaluate(Expression expr)
     {
-        var simplified = Evaluator.PartialEval(expr);
-        if (simplified is ConstantExpression c) return c.Value;
-
-        try
-        {
-            return Expression.Lambda(simplified).Compile().DynamicInvoke();
-        }
-        catch
-        {
-            return null;
-        }
+        return expr is ConstantExpression c ? c.Value : null;
     }
 
     private static bool TryGetContainsParts(MethodCallExpression call, out Expression? coll, out Expression? val)
@@ -429,18 +413,37 @@ internal class SanityMethodCallTranslator(
 
     private static string JoinValues(IEnumerable values)
     {
-        var arr = values.Cast<object?>().Where(o => o != null).ToArray();
-        if (arr.Length == 0) return "[]";
-
-        var formatted = arr.Select(v => v switch
+        var sb = new StringBuilder();
+        sb.Append(SanityConstants.OPEN_BRACKET);
+        var first = true;
+        foreach (var v in values)
         {
-            string s => $"\"{SanityExpressionTransformer.EscapeString(s)}\"",
-            Guid g => $"\"{g}\"",
-            bool b => b.ToString().ToLower(),
-            _ => v?.ToString() ?? "null"
-        });
+            if (v == null) continue;
+            if (!first) sb.Append(SanityConstants.COMMA);
+            first = false;
 
-        return "[" + string.Join(",", formatted) + "]";
+            switch (v)
+            {
+                case string s:
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(s)).Append(SanityConstants.STRING_DELIMITER);
+                    break;
+                case Guid g:
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(g).Append(SanityConstants.STRING_DELIMITER);
+                    break;
+                case bool b:
+                    sb.Append(b ? SanityConstants.TRUE : SanityConstants.FALSE);
+                    break;
+                case int or long or double or float or decimal:
+                    sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", v);
+                    break;
+                default:
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? "")).Append(SanityConstants.STRING_DELIMITER);
+                    break;
+            }
+        }
+
+        sb.Append(SanityConstants.CLOSE_BRACKET);
+        return sb.ToString();
     }
 
     private string HandleContainsLegacy(MethodCallExpression e)
@@ -491,11 +494,9 @@ internal class SanityMethodCallTranslator(
             if (predicate is UnaryExpression { NodeType: ExpressionType.Quote } quote) predicate = quote.Operand;
 
             if (predicate is LambdaExpression lambda)
-            {
                 // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
                 // If the collection can be evaluated locally, use HandleContains logic
-                var simplifiedCollection = Evaluator.PartialEval(collectionExpr);
-                if (simplifiedCollection is ConstantExpression expression &&
+                if (collectionExpr is ConstantExpression expression &&
                     lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
                 {
                     // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
@@ -512,24 +513,23 @@ internal class SanityMethodCallTranslator(
                         return $"{targetOperand} {SanityConstants.IN} {values}";
                     }
                 }
-            }
 
             if (collectionExpr.Type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(collectionExpr.Type))
             {
                 // Collection.Any(predicate) -> count(Collection[predicate]) > 0
                 var filter = HandleWhere(e);
                 // HandleWhere already returns the filtered operand if not top-level
-                return $"{SanityConstants.COUNT}({filter}) {SanityConstants.GREATER_THAN} 0";
+                return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{filter}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
             }
         }
 
         var op = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : SanityConstants.AT;
-        return $"{SanityConstants.COUNT}({op}) {SanityConstants.GREATER_THAN} 0";
+        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{op}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
     }
 
     private string HandleIsDefined(MethodCallExpression e)
     {
-        return e.Arguments.Count > 0 ? $"{SanityConstants.DEFINED}({transformOperand(e.Arguments[0])})" : string.Empty;
+        return e.Arguments.Count > 0 ? $"{SanityConstants.DEFINED}{SanityConstants.OPEN_PAREN}{transformOperand(e.Arguments[0])}{SanityConstants.CLOSE_PAREN}" : string.Empty;
     }
 
     private string HandleIsNullOrEmpty(MethodCallExpression e)
@@ -537,7 +537,7 @@ internal class SanityMethodCallTranslator(
         if (e.Arguments.Count == 0) return string.Empty;
 
         var operand = transformOperand(e.Arguments[0]);
-        return $"({operand} {SanityConstants.EQUALS} {SanityConstants.NULL} || {operand} {SanityConstants.EQUALS} \"\" || !({SanityConstants.DEFINED}({operand})))";
+        return $"{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.NULL}{SanityConstants.SPACE}{SanityConstants.OR}{SanityConstants.SPACE}{operand}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{SanityConstants.STRING_DELIMITER}{SanityConstants.SPACE}{SanityConstants.OR}{SanityConstants.SPACE}{SanityConstants.NOT}{SanityConstants.OPEN_PAREN}{SanityConstants.DEFINED}{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.CLOSE_PAREN}{SanityConstants.CLOSE_PAREN}{SanityConstants.CLOSE_PAREN}";
     }
 
     private string HandleOrdering(MethodCallExpression e, bool descending)
@@ -549,12 +549,11 @@ internal class SanityMethodCallTranslator(
         var arg = e.Arguments[1];
         if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
 
-        var simplifiedExpression = Evaluator.PartialEval(arg);
-        if (simplifiedExpression is not LambdaExpression lambda) return string.Empty;
+        if (arg is not LambdaExpression lambda) return string.Empty;
         if (isTopLevel && !queryBuilder.IsSilent)
         {
             if (e.Method.Name.StartsWith("OrderBy")) queryBuilder.Orderings.Clear();
-            queryBuilder.Orderings.Add(transformOperand(lambda.Body) + (descending ? $" {SanityConstants.DESC}" : $" {SanityConstants.ASC}"));
+            queryBuilder.AddOrdering(transformOperand(lambda.Body) + (descending ? SanityConstants.SPACE + SanityConstants.DESC : SanityConstants.SPACE + SanityConstants.ASC));
         }
 
         return string.Empty;
@@ -566,8 +565,7 @@ internal class SanityMethodCallTranslator(
 
         if (e.Arguments.Count <= 1) return string.Empty;
 
-        var simplifiedExpression = Evaluator.PartialEval(e.Arguments[1]);
-        if (simplifiedExpression is not ConstantExpression c) return string.Empty;
+        if (e.Arguments[1] is not ConstantExpression c) return string.Empty;
 
         if (isTopLevel && !queryBuilder.IsSilent)
             queryBuilder.Skip = (int)c.Value!;
@@ -581,8 +579,7 @@ internal class SanityMethodCallTranslator(
 
         if (e.Arguments.Count <= 1) return string.Empty;
 
-        var simplifiedExpression = Evaluator.PartialEval(e.Arguments[1]);
-        if (simplifiedExpression is not ConstantExpression c) return string.Empty;
+        if (e.Arguments[1] is not ConstantExpression c) return string.Empty;
 
         if (isTopLevel && !queryBuilder.IsSilent)
             queryBuilder.Take = (int)c.Value!;
@@ -595,10 +592,10 @@ internal class SanityMethodCallTranslator(
         if (e.Object == null || e.Arguments.Count == 0) return string.Empty;
 
         var member = transformOperand(e.Object);
-        var valueExpr = Evaluator.PartialEval(e.Arguments[0]);
-        if (valueExpr is ConstantExpression { Value: string s }) return $"{member} {SanityConstants.MATCH} \"{SanityExpressionTransformer.EscapeString(s)}{SanityConstants.STAR}\"";
+        var valueExpr = e.Arguments[0];
+        if (valueExpr is ConstantExpression { Value: string s }) return $"{member}{SanityConstants.SPACE}{SanityConstants.MATCH}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{SanityExpressionTransformer.EscapeString(s)}{SanityConstants.STAR}{SanityConstants.STRING_DELIMITER}";
 
         var value = transformOperand(e.Arguments[0]);
-        return $"{member} {SanityConstants.MATCH} {value} + \"{SanityConstants.STAR}\"";
+        return $"{member}{SanityConstants.SPACE}{SanityConstants.MATCH}{SanityConstants.SPACE}{value}{SanityConstants.SPACE}{SanityConstants.PLUS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{SanityConstants.STAR}{SanityConstants.STRING_DELIMITER}";
     }
 }

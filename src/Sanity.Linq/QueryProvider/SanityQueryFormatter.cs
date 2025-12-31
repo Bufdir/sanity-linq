@@ -3,12 +3,12 @@
 public static class SanityQueryFormatter
 {
     /// <summary>
-    /// Formats a given Sanity query string by applying proper indentation and formatting rules.
+    ///     Formats a given Sanity query string by applying proper indentation and formatting rules.
     /// </summary>
     /// <param name="query">The Sanity query string to format. Can be null, empty, or contain whitespace.</param>
     /// <returns>
-    /// A formatted version of the query string with appropriate indentation.
-    /// If the input query is null, empty, or consists of whitespace, it returns the input as is.
+    ///     A formatted version of the query string with appropriate indentation.
+    ///     If the input query is null, empty, or consists of whitespace, it returns the input as is.
     /// </returns>
     public static string Format(string query)
     {
@@ -49,7 +49,7 @@ public static class SanityQueryFormatter
 
         private void UpdateQuoteState(char c)
         {
-            if (c is not ('"' or '\'') || (_currentIndex != 0 && query[_currentIndex - 1] == '\\')) return;
+            if (c != SanityConstants.CHAR_QUOTE && c != SanityConstants.CHAR_SINGLE_QUOTE || (_currentIndex != 0 && query[_currentIndex - 1] == '\\')) return;
 
             if (!_inQuotes)
             {
@@ -66,28 +66,28 @@ public static class SanityQueryFormatter
         {
             switch (c)
             {
-                case '{':
+                case SanityConstants.CHAR_OPEN_BRACE:
                     HandleOpenBrace();
                     break;
-                case '}':
+                case SanityConstants.CHAR_CLOSE_BRACE:
                     HandleCloseBrace();
                     break;
-                case ',':
+                case SanityConstants.CHAR_COMMA:
                     HandleComma();
                     break;
-                case '[':
+                case SanityConstants.CHAR_OPEN_BRACKET:
                     _bracketLevel++;
                     _sb.Append(c);
                     break;
-                case ']':
+                case SanityConstants.CHAR_CLOSE_BRACKET:
                     _bracketLevel--;
                     _sb.Append(c);
                     break;
-                case '(':
+                case SanityConstants.CHAR_OPEN_PAREN:
                     _parenLevel++;
                     _sb.Append(c);
                     break;
-                case ')':
+                case SanityConstants.CHAR_CLOSE_PAREN:
                     _parenLevel--;
                     _sb.Append(c);
                     break;
@@ -102,7 +102,7 @@ public static class SanityQueryFormatter
             if (TryHandleSpreadOnly()) return;
 
             NormalizeSpace();
-            _sb.Append('{');
+            _sb.Append(SanityConstants.CHAR_OPEN_BRACE);
             AppendNewlineAndIndent(++_indentLevel);
         }
 
@@ -111,15 +111,15 @@ public static class SanityQueryFormatter
             var nextIndex = _currentIndex + 1;
             while (nextIndex < query.Length && char.IsWhiteSpace(query[nextIndex])) nextIndex++;
 
-            if (nextIndex + 2 >= query.Length || query[nextIndex] != '.' || query[nextIndex + 1] != '.' || query[nextIndex + 2] != '.') return false;
+            if (nextIndex + 2 >= query.Length || query[nextIndex] != SanityConstants.CHAR_DOT || query[nextIndex + 1] != SanityConstants.CHAR_DOT || query[nextIndex + 2] != SanityConstants.CHAR_DOT) return false;
 
             var afterSpread = nextIndex + 3;
             while (afterSpread < query.Length && char.IsWhiteSpace(query[afterSpread])) afterSpread++;
 
-            if (afterSpread >= query.Length || query[afterSpread] != '}') return false;
+            if (afterSpread >= query.Length || query[afterSpread] != SanityConstants.CHAR_CLOSE_BRACE) return false;
 
             NormalizeSpace();
-            _sb.Append("{...}");
+            _sb.Append(SanityConstants.OPEN_BRACE).Append(SanityConstants.SPREAD_OPERATOR).Append(SanityConstants.CLOSE_BRACE);
             _currentIndex = afterSpread;
             return true;
         }
@@ -128,13 +128,13 @@ public static class SanityQueryFormatter
         {
             TrimTrailingWhitespace();
             AppendNewlineAndIndent(--_indentLevel);
-            _sb.Append('}');
+            _sb.Append(SanityConstants.CHAR_CLOSE_BRACE);
         }
 
         private void HandleComma()
         {
             TrimTrailingWhitespace();
-            _sb.Append(',');
+            _sb.Append(SanityConstants.CHAR_COMMA);
             if (_bracketLevel != 0 || _parenLevel != 0 || _indentLevel <= 0) return;
 
             AppendNewlineAndIndent(_indentLevel);
@@ -150,17 +150,14 @@ public static class SanityQueryFormatter
                 return;
             }
 
-            if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != '\n')
-            {
-                _sb.Append(' ');
-            }
+            if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != '\n') _sb.Append(SanityConstants.CHAR_SPACE);
         }
 
         private void NormalizeSpace()
         {
             var hadSpace = _sb.Length > 0 && char.IsWhiteSpace(_sb[^1]);
             TrimTrailingWhitespace();
-            if (hadSpace && _sb.Length > 0 && _sb[^1] != '\n') _sb.Append(' ');
+            if (hadSpace && _sb.Length > 0 && _sb[^1] != '\n') _sb.Append(SanityConstants.CHAR_SPACE);
         }
 
         private void TrimTrailingWhitespace()
@@ -171,7 +168,7 @@ public static class SanityQueryFormatter
         private void AppendNewlineAndIndent(int level)
         {
             _sb.AppendLine();
-            _sb.Append(new string(' ', level * 2));
+            for (var i = 0; i < level; i++) _sb.Append("  ");
         }
     }
 }

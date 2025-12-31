@@ -118,13 +118,9 @@ internal static class SanityExpressionTransformer
 
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-        {
             memberPath.Add(m.Expression is ParameterExpression ? "@->" : "->");
-        }
         else
-        {
             memberPath.Add(member.GetJsonProperty());
-        }
 
         if (m.Expression is MemberExpression inner)
             memberPath.Add(TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler));
@@ -163,6 +159,4 @@ internal static class SanityExpressionTransformer
             _ => throw new Exception($"Unary expression of type {u.GetType()} and nodeType {u.NodeType} not supported. ")
         };
     }
-
-    
 }

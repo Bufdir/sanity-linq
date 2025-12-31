@@ -1,5 +1,4 @@
 using System.Collections;
-using Sanity.Linq;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.Internal;
 
@@ -143,7 +142,11 @@ internal class SanityMethodCallTranslator(
         if (lambda.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
 
-        if (isTopLevel && !queryBuilder.IsSilent) queryBuilder.Projection = transformOperand(lambda.Body);
+        if (isTopLevel && !queryBuilder.IsSilent)
+        {
+            queryBuilder.Projection = transformOperand(lambda.Body);
+            if (lambda.Body is MemberExpression && !lambda.Body.Type.IsPrimitive && lambda.Body.Type != typeof(string) && !typeof(IEnumerable).IsAssignableFrom(lambda.Body.Type)) queryBuilder.FlattenProjection = true;
+        }
 
         return transformOperand(e.Arguments[0]);
     }
@@ -163,68 +166,10 @@ internal class SanityMethodCallTranslator(
         {
             var fieldPath = transformOperand(body).TrimStart('@').TrimStart('.');
             var sourceName = GetIncludeSourceName(e, fieldPath);
-            var propertyType = body.Type;
-            var originalType = lambda.Parameters[0].Type;
-
-            var includePath = AddInclude(fieldPath, propertyType, sourceName, originalType);
+            var includePath = AddInclude(fieldPath, body.Type, sourceName);
 
             selectors.Reverse();
-            var currentIncludePath = includePath;
-            var currentType = propertyType;
-
-            foreach (var selectorExpr in selectors)
-            {
-                if (selectorExpr is MethodCallExpression mc && mc.Method.Name == "OfType")
-                {
-                    var targetType = mc.Method.GetGenericArguments()[0];
-                    var currentElementType = TypeSystem.GetElementType(currentType);
-
-                    if (currentType != targetType && currentElementType != targetType)
-                    {
-                        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-                        {
-                            currentIncludePath += "[_type == \"reference\"]";
-                        }
-                        else
-                        {
-                            var sanityType = targetType.GetSanityTypeName();
-                            currentIncludePath += $"[_type == \"{sanityType}\"]";
-                        }
-                    }
-
-                    AddInclude(currentIncludePath, mc.Type, null, currentType);
-                    currentType = targetType;
-                    continue;
-                }
-
-                var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
-                var rawPath = transformOperand(selector.Body);
-                var selectorPath = rawPath.Replace("->", "").Replace("@", "").Replace("[]", "").Trim('.');
-                if (string.IsNullOrEmpty(selectorPath))
-                {
-                    if (rawPath.Contains("->"))
-                    {
-                        selectorPath = "->";
-                    }
-                    else
-                    {
-                        // Update the currentType but don't add redundant include for the same path
-                        currentType = selector.Body.Type;
-                        continue;
-                    }
-                }
-
-                if (selectorPath.StartsWith("["))
-                {
-                    currentIncludePath = $"{currentIncludePath}{selectorPath}";
-                }
-                else
-                {
-                    currentIncludePath = $"{currentIncludePath}.{selectorPath}".TrimEnd('.');
-                }
-                AddInclude(currentIncludePath, selector.Body.Type, null, currentType);
-                currentType = selector.Body.Type;
-            }
+            ProcessIncludeSelectors(selectors, includePath, body.Type);
         }
         finally
         {
@@ -235,6 +180,64 @@ internal class SanityMethodCallTranslator(
         return string.Empty;
     }
 
+    private void ProcessIncludeSelectors(List<Expression> selectors, string includePath, Type currentType)
+    {
+        var currentIncludePath = includePath;
+        foreach (var selectorExpr in selectors)
+            if (selectorExpr is MethodCallExpression { Method.Name: "OfType" } mc)
+                currentIncludePath = HandleIncludeOfType(mc, currentIncludePath, ref currentType);
+            else
+                currentIncludePath = HandleIncludePath(selectorExpr, currentIncludePath, out currentType);
+    }
+
+    private string HandleIncludeOfType(MethodCallExpression mc, string currentIncludePath, ref Type currentType)
+    {
+        var targetType = mc.Method.GetGenericArguments()[0];
+        var currentElementType = TypeSystem.GetElementType(currentType);
+
+        if (currentType != targetType && currentElementType != targetType)
+        {
+            if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+            {
+                currentIncludePath += "[_type == \"reference\"]";
+            }
+            else
+            {
+                var sanityType = targetType.GetSanityTypeName();
+                currentIncludePath += $"[_type == \"{sanityType}\"]";
+            }
+        }
+
+        AddInclude(currentIncludePath, mc.Type, null);
+        currentType = targetType;
+        return currentIncludePath;
+    }
+
+    private string HandleIncludePath(Expression selectorExpr, string currentIncludePath, out Type currentType)
+    {
+        var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
+        var rawPath = transformOperand(selector.Body);
+        var selectorPath = rawPath.Replace("->", "").Replace("@", "").Replace("[]", "").Trim('.');
+        if (string.IsNullOrEmpty(selectorPath))
+        {
+            if (rawPath.Contains("->"))
+            {
+                selectorPath = "->";
+            }
+            else
+            {
+                // Update the currentType but don't add redundant include for the same path
+                currentType = selector.Body.Type;
+                return currentIncludePath;
+            }
+        }
+
+        currentIncludePath = selectorPath.StartsWith("[") ? $"{currentIncludePath}{selectorPath}" : $"{currentIncludePath}.{selectorPath}".TrimEnd('.');
+        AddInclude(currentIncludePath, selector.Body.Type, null);
+        currentType = selector.Body.Type;
+        return currentIncludePath;
+    }
+
     private static LambdaExpression ExtractIncludeLambda(MethodCallExpression e)
     {
         if (e.Arguments.Count < 2) throw new Exception("Include method must have at least two arguments.");
@@ -243,10 +246,7 @@ internal class SanityMethodCallTranslator(
         if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
         if (arg is UnaryExpression { NodeType: ExpressionType.Convert } convert) arg = convert.Operand;
 
-        if (arg is not LambdaExpression lambda)
-            throw new Exception("Include method second argument must be a lambda expression.");
-
-        return lambda;
+        return arg as LambdaExpression ?? throw new Exception("Include method second argument must be a lambda expression.");
     }
 
     private static (Expression body, List<Expression> selectors) ExtractSelectors(Expression body)
@@ -255,13 +255,8 @@ internal class SanityMethodCallTranslator(
         while (body is MethodCallExpression m && (m.Method.Name == "Select" || m.Method.Name == "SelectMany" || m.Method.Name == "OfType"))
         {
             if (m.Arguments.Count >= 2)
-            {
                 selectors.Add(m.Arguments[1]);
-            }
-            else if (m.Method.Name == "OfType")
-            {
-                selectors.Add(m);
-            }
+            else if (m.Method.Name == "OfType") selectors.Add(m);
 
             body = m.Arguments[0];
         }
@@ -269,7 +264,7 @@ internal class SanityMethodCallTranslator(
         return (body, selectors);
     }
 
-    private string AddInclude(string fieldPath, Type propertyType, string? sourceName, Type originalType)
+    private string AddInclude(string fieldPath, Type propertyType, string? sourceName)
     {
         if (queryBuilder.Includes.ContainsKey(fieldPath)) return fieldPath;
 
@@ -298,12 +293,10 @@ internal class SanityMethodCallTranslator(
         var targetType = e.Method.GetGenericArguments()[0];
 
         if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-        {
             // Only include items that are actual references.
             // We include anything with _type == "reference" even if _ref is missing,
             // as some datasets use _key as the identifier for inline-expanded references.
             return $"{operand}[_type == \"reference\"]";
-        }
 
         var sanityType = targetType.GetSanityTypeName();
         return $"{operand}[_type == \"{sanityType}\"]";
@@ -331,13 +324,12 @@ internal class SanityMethodCallTranslator(
 
         var leftAny = transformOperand(collectionExpr);
         var rightAny = transformOperand(valueExpr);
-        if (!string.IsNullOrEmpty(leftAny) && !string.IsNullOrEmpty(rightAny))
-        {
-            if (leftAny == "@") return $"{rightAny} in @";
-            return $"{rightAny} in {leftAny}";
-        }
 
-        throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+        if (string.IsNullOrEmpty(leftAny) || string.IsNullOrEmpty(rightAny))
+            throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
+
+        if (leftAny == "@") return $"{rightAny} in @";
+        return $"{rightAny} in {leftAny}";
     }
 
     private string? HandleEnumerableContains(Expression collectionExpr, Expression valueExpr)
@@ -349,7 +341,7 @@ internal class SanityMethodCallTranslator(
         var values = JoinValues(ie);
         if (values == "[]") return "false";
 
-        // If memberName is @->id or something similar, it means we are checking a reference's ID
+        // If the memberName is @->id or something similar, it means we are checking a reference's ID
         // In GROQ, "refID in [ids]" is more efficient than "count([ids][@ == refID]) > 0"
         return $"{memberName} in {values}";
     }
@@ -454,7 +446,7 @@ internal class SanityMethodCallTranslator(
             if (!queryBuilder.IsSilent) queryBuilder.AggregateFunction = "count";
         }
 
-        var operand = e.Arguments.Count > 1 ? HandleWhere(e) : (e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@");
+        var operand = e.Arguments.Count > 1 ? HandleWhere(e) : e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
 
         return $"count({operand})";
     }
@@ -485,28 +477,26 @@ internal class SanityMethodCallTranslator(
 
             if (predicate is LambdaExpression lambda)
             {
-                 // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
-                 // If the collection can be evaluated locally, use HandleContains logic
-                 var simplifiedCollection = Evaluator.PartialEval(collectionExpr);
-                 if (simplifiedCollection is ConstantExpression)
-                 {
-                      // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
-                      // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
-                      if (lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
-                      {
-                           Expression? target = null;
-                           if (be.Left == lambda.Parameters[0]) target = be.Right;
-                           else if (be.Right == lambda.Parameters[0]) target = be.Left;
+                // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
+                // If the collection can be evaluated locally, use HandleContains logic
+                var simplifiedCollection = Evaluator.PartialEval(collectionExpr);
+                if (simplifiedCollection is ConstantExpression expression &&
+                    lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
+                {
+                    // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
+                    // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
+                    Expression? target = null;
+                    if (be.Left == lambda.Parameters[0]) target = be.Right;
+                    else if (be.Right == lambda.Parameters[0]) target = be.Left;
 
-                           if (target != null)
-                           {
-                                var collection = (simplifiedCollection as ConstantExpression)?.Value as IEnumerable ?? Array.Empty<object>();
-                                var targetOperand = transformOperand(target);
-                                var values = JoinValues(collection);
-                                return $"{targetOperand} in {values}";
-                           }
-                      }
-                 }
+                    if (target != null)
+                    {
+                        var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
+                        var targetOperand = transformOperand(target);
+                        var values = JoinValues(collection);
+                        return $"{targetOperand} in {values}";
+                    }
+                }
             }
 
             if (collectionExpr.Type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(collectionExpr.Type))

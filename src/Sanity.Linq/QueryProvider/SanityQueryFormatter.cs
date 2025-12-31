@@ -136,13 +136,15 @@ public static class SanityQueryFormatter
 
         private void HandleDefault(char c)
         {
-            if (char.IsWhiteSpace(c))
-            {
-                if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != '\n') _sb.Append(' ');
-            }
-            else
+            if (!char.IsWhiteSpace(c))
             {
                 _sb.Append(c);
+                return;
+            }
+
+            if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != '\n')
+            {
+                _sb.Append(' ');
             }
         }
 

@@ -196,31 +196,33 @@ public class SanityClient
         HandleCallback(content, callback);
 
         var requestUri = response.RequestMessage?.RequestUri;
-        if (response.IsSuccessStatusCode)
-            try
-            {
-                var obj = JsonConvert.DeserializeObject<TResponse>(content, DeserializerSettings);
-                if (obj != null) return obj;
-
-                var preview = Truncate(content, 2048);
-                throw new SanityDeserializationException("Failed to deserialize Sanity response: deserialized to null", preview, requestUri);
-            }
-            catch (SanityDeserializationException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                var preview = Truncate(content, 2048);
-                throw new SanityDeserializationException("Failed to deserialize Sanity response", preview, requestUri, ex);
-            }
-
-        var httpEx = new SanityHttpException($"Sanity request failed with HTTP status {response.StatusCode}: {response.ReasonPhrase ?? ""}")
+        if (!response.IsSuccessStatusCode)
         {
-            Content = content,
-            StatusCode = response.StatusCode
-        };
-        throw httpEx;
+            var httpEx = new SanityHttpException($"Sanity request failed with HTTP status {response.StatusCode}: {response.ReasonPhrase ?? ""}")
+            {
+                Content = content,
+                StatusCode = response.StatusCode
+            };
+            throw httpEx;
+        }
+
+        try
+        {
+            var obj = JsonConvert.DeserializeObject<TResponse>(content, DeserializerSettings);
+            if (obj != null) return obj;
+
+            var preview = Truncate(content, 2048);
+            throw new SanityDeserializationException("Failed to deserialize Sanity response: deserialized to null", preview, requestUri);
+        }
+        catch (SanityDeserializationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var preview = Truncate(content, 2048);
+            throw new SanityDeserializationException("Failed to deserialize Sanity response", preview, requestUri, ex);
+        }
     }
 
     private static string Truncate(string? value, int maxLength)

@@ -139,14 +139,14 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         var left = TransformOperand(b.Left);
         var right = TransformOperand(b.Right);
 
-        if (left == "null" && op is "==" or "!=")
+        if (left == "null" && op is SanityConstants.EQUALS or SanityConstants.NOT_EQUALS)
             // Swap left and right so null is always on the right for comparison logic
             (left, right) = (right, left);
 
         return right switch
         {
-            "null" when op == "==" => $"(!(defined({left})) || {left} {op} {right})",
-            "null" when op == "!=" => $"(defined({left}) && {left} {op} {right})",
+            "null" when op == SanityConstants.EQUALS => $"(!(defined({left})) || {left} {op} {right})",
+            "null" when op == SanityConstants.NOT_EQUALS => $"(defined({left}) && {left} {op} {right})",
             _ => $"{left} {op} {right}"
         };
     }
@@ -155,14 +155,14 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
     {
         return nodeType switch
         {
-            ExpressionType.Equal => "==",
-            ExpressionType.AndAlso => "&&",
-            ExpressionType.OrElse => "||",
-            ExpressionType.LessThan => "<",
-            ExpressionType.GreaterThan => ">",
-            ExpressionType.LessThanOrEqual => "<=",
-            ExpressionType.GreaterThanOrEqual => ">=",
-            ExpressionType.NotEqual => "!=",
+            ExpressionType.Equal => SanityConstants.EQUALS,
+            ExpressionType.AndAlso => SanityConstants.AND,
+            ExpressionType.OrElse => SanityConstants.OR,
+            ExpressionType.LessThan => SanityConstants.LESS_THAN,
+            ExpressionType.GreaterThan => SanityConstants.GREATER_THAN,
+            ExpressionType.LessThanOrEqual => SanityConstants.LESS_THAN_OR_EQUAL,
+            ExpressionType.GreaterThanOrEqual => SanityConstants.GREATER_THAN_OR_EQUAL,
+            ExpressionType.NotEqual => SanityConstants.NOT_EQUALS,
             _ => throw new NotImplementedException($"Operator '{nodeType}' is not supported.")
         };
     }

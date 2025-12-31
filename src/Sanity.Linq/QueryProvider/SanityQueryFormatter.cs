@@ -49,7 +49,7 @@ public static class SanityQueryFormatter
 
         private void UpdateQuoteState(char c)
         {
-            if (c != SanityConstants.CHAR_QUOTE && c != SanityConstants.CHAR_SINGLE_QUOTE || (_currentIndex != 0 && query[_currentIndex - 1] == '\\')) return;
+            if (c != SanityConstants.CHAR_QUOTE && c != SanityConstants.CHAR_SINGLE_QUOTE || (_currentIndex != 0 && query[_currentIndex - 1] == SanityConstants.CHAR_BACKSLASH)) return;
 
             if (!_inQuotes)
             {
@@ -150,14 +150,14 @@ public static class SanityQueryFormatter
                 return;
             }
 
-            if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != '\n') _sb.Append(SanityConstants.CHAR_SPACE);
+            if (_sb.Length > 0 && !char.IsWhiteSpace(_sb[^1]) && _sb[^1] != SanityConstants.CHAR_NEWLINE) _sb.Append(SanityConstants.CHAR_SPACE);
         }
 
         private void NormalizeSpace()
         {
             var hadSpace = _sb.Length > 0 && char.IsWhiteSpace(_sb[^1]);
             TrimTrailingWhitespace();
-            if (hadSpace && _sb.Length > 0 && _sb[^1] != '\n') _sb.Append(SanityConstants.CHAR_SPACE);
+            if (hadSpace && _sb.Length > 0 && _sb[^1] != SanityConstants.CHAR_NEWLINE) _sb.Append(SanityConstants.CHAR_SPACE);
         }
 
         private void TrimTrailingWhitespace()
@@ -168,7 +168,7 @@ public static class SanityQueryFormatter
         private void AppendNewlineAndIndent(int level)
         {
             _sb.AppendLine();
-            for (var i = 0; i < level; i++) _sb.Append("  ");
+            for (var i = 0; i < level; i++) _sb.Append(SanityConstants.INDENT);
         }
     }
 }

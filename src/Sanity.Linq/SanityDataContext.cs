@@ -20,6 +20,7 @@ using Sanity.Linq.DTOs;
 using Sanity.Linq.Enums;
 using Sanity.Linq.JsonConverters;
 using Sanity.Linq.Mutations;
+// ReSharper disable MemberCanBePrivate.Global
 
 namespace Sanity.Linq;
 
@@ -39,6 +40,7 @@ public class SanityDataContext
     /// <param name="serializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
+    /// <param name="logger"></param>
     public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings = null, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null) : this(options, serializerSettings, serializerSettings, htmlBuilderOptions, clientFactory, logger)
     {
     }
@@ -51,6 +53,7 @@ public class SanityDataContext
     /// <param name="deserializerSettings"></param>
     /// <param name="htmlBuilderOptions"></param>
     /// <param name="clientFactory"></param>
+    /// <param name="logger"></param>
     public SanityDataContext(SanityOptions options, JsonSerializerSettings? serializerSettings, JsonSerializerSettings? deserializerSettings, SanityHtmlBuilderOptions? htmlBuilderOptions = null, IHttpClientFactory? clientFactory = null, ILogger? logger = null)
     {
         if (options == null) throw new ArgumentNullException(nameof(options));
@@ -110,7 +113,7 @@ public class SanityDataContext
     }
 
     /// <summary>
-    ///     Sends all changes registered on document sets of specified type to Sanity as a transactional set of mutations.
+    ///     Sends all changes registered on document sets of a specified type to Sanity as a transactional set of mutations.
     /// </summary>
     /// <param name="returnIds"></param>
     /// <param name="returnDocuments"></param>
@@ -131,7 +134,7 @@ public class SanityDataContext
     }
 
     /// <summary>
-    ///     Returns an IQueryable document set for specified type
+    ///     Returns an IQueryable document set for a specified type
     /// </summary>
     /// <typeparam name="TDoc"></typeparam>
     /// <returns></returns>

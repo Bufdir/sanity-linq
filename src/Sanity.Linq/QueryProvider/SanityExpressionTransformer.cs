@@ -15,13 +15,13 @@ internal static class SanityExpressionTransformer
             UnaryExpression u => unaryExpressionHandler(u),
             MethodCallExpression mc => methodCallHandler(mc),
             ConstantExpression { Value: null } => SanityConstants.NULL,
-            ConstantExpression c when c.Type == typeof(string) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}",
+            ConstantExpression c when c.Type == typeof(string) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? string.Empty)}{SanityConstants.STRING_DELIMITER}",
             ConstantExpression c when IsNumericOrBoolType(c.Type) => string.Format(CultureInfo.InvariantCulture, "{0}", c.Value).ToLower(),
             ConstantExpression { Value: DateTime dt } => dt == dt.Date
                 ? $"{SanityConstants.STRING_DELIMITER}{dt:yyyy-MM-dd}{SanityConstants.STRING_DELIMITER}"
                 : $"{SanityConstants.STRING_DELIMITER}{dt:O}{SanityConstants.STRING_DELIMITER}",
             ConstantExpression { Value: DateTimeOffset dto } => $"{SanityConstants.STRING_DELIMITER}{dto:O}{SanityConstants.STRING_DELIMITER}",
-            ConstantExpression c when c.Type == typeof(Guid) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}",
+            ConstantExpression c when c.Type == typeof(Guid) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? string.Empty)}{SanityConstants.STRING_DELIMITER}",
             ConstantExpression c when c.Type.IsArray || (c.Type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(c.Type)) => FormatEnumerable(c.Value as IEnumerable, c.Type),
             ConstantExpression c => c.Value?.ToString() ?? SanityConstants.NULL,
             ParameterExpression => SanityConstants.AT,
@@ -63,7 +63,7 @@ internal static class SanityExpressionTransformer
                     sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", item);
                     break;
                 default:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(item.ToString() ?? "")).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(item.ToString() ?? string.Empty)).Append(SanityConstants.STRING_DELIMITER);
                     break;
             }
         }
@@ -78,7 +78,7 @@ internal static class SanityExpressionTransformer
 
         var needsEscaping = false;
         foreach (var c in value)
-            if (c is '\\' or '"')
+            if (c is SanityConstants.CHAR_BACKSLASH or SanityConstants.CHAR_QUOTE)
             {
                 needsEscaping = true;
                 break;
@@ -89,7 +89,7 @@ internal static class SanityExpressionTransformer
         var sb = new StringBuilder(value.Length + 4);
         foreach (var c in value)
         {
-            if (c is '\\' or '"') sb.Append('\\');
+            if (c is SanityConstants.CHAR_BACKSLASH or SanityConstants.CHAR_QUOTE) sb.Append(SanityConstants.CHAR_BACKSLASH);
             sb.Append(c);
         }
 

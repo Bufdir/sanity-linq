@@ -410,17 +410,17 @@ internal sealed partial class SanityQueryBuilder
         if (key == part) return true;
 
         // Simplify key: untokenize it and remove spaces
-        var k = Untokenize(key).Replace(SanityConstants.SPACE, "");
+        var k = Untokenize(key).Replace(SanityConstants.SPACE, string.Empty);
 
         // Simplify part: remove spaces
-        var p = part.Replace(SanityConstants.SPACE, "");
+        var p = part.Replace(SanityConstants.SPACE, string.Empty);
 
         if (k == p) return true;
 
         // Base name match (e.g. "topic" matches "topic[...]").
         // We only care about the part before the first [ or -> or . (though dots shouldn't be here)
-        var kBase = k.Split(SanityConstants.CHAR_OPEN_BRACKET, '-')[0];
-        var pBase = p.Split(SanityConstants.CHAR_OPEN_BRACKET, '-')[0];
+        var kBase = k.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0];
+        var pBase = p.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0];
 
         return kBase == pBase && !string.IsNullOrEmpty(kBase);
     }
@@ -510,7 +510,7 @@ internal sealed partial class SanityQueryBuilder
         if (string.IsNullOrEmpty(key)) return key;
         var reverseTokens = SanityGroqTokenRegistry.Instance.ReverseTokens;
 
-        var index = key.IndexOf("__GTK_", StringComparison.Ordinal);
+        var index = key.IndexOf(SanityConstants.TOKEN_PREFIX, StringComparison.Ordinal);
         if (index == -1) return key;
 
         var sb = new StringBuilder();
@@ -528,17 +528,17 @@ internal sealed partial class SanityQueryBuilder
                 }
                 else
                 {
-                    sb.Append("__GTK_");
+                    sb.Append(SanityConstants.TOKEN_PREFIX);
                     lastIndex = index + 6;
                 }
             }
             else
             {
-                sb.Append("__GTK_");
+                sb.Append(SanityConstants.TOKEN_PREFIX);
                 lastIndex = index + 6;
             }
 
-            index = key.IndexOf("__GTK_", lastIndex, StringComparison.Ordinal);
+            index = key.IndexOf(SanityConstants.TOKEN_PREFIX, lastIndex, StringComparison.Ordinal);
         }
 
         sb.Append(key, lastIndex, key.Length - lastIndex);
@@ -819,8 +819,8 @@ internal sealed partial class SanityQueryBuilder
 
         var groq = json
             .Replace(SanityConstants.COLON + SanityConstants.OPEN_BRACE, SanityConstants.OPEN_BRACE)
-            .Replace(SanityConstants.COLON + SanityConstants.TRUE, "")
-            .Replace(SanityConstants.STRING_DELIMITER, "");
+            .Replace(SanityConstants.COLON + SanityConstants.TRUE, string.Empty)
+            .Replace(SanityConstants.STRING_DELIMITER, string.Empty);
 
         return Untokenize(groq);
     }

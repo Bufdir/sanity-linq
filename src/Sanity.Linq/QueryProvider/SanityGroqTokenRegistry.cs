@@ -10,26 +10,26 @@ internal sealed class SanityGroqTokenRegistry
     {
         var tokens = new Dictionary<string, string>
         {
-            { SanityConstants.DEREFERENCING_SWITCH, "__GTK_01__" },
-            { SanityConstants.DEREFERENCING_OPERATOR, "__GTK_02__" },
-            { SanityConstants.STRING_DELIMITER, "__GTK_03__" },
-            { SanityConstants.COLON, "__GTK_04__" },
-            { SanityConstants.SPREAD_OPERATOR, "__GTK_05__" },
-            { SanityConstants.ARRAY_INDICATOR, "__GTK_06__" },
-            { SanityConstants.OPEN_BRACKET, "__GTK_07__" },
-            { SanityConstants.CLOSE_BRACKET, "__GTK_08__" },
-            { SanityConstants.OPEN_PAREN, "__GTK_09__" },
-            { SanityConstants.CLOSE_PAREN, "__GTK_10__" },
-            { SanityConstants.AT, "__GTK_11__" },
-            { SanityConstants.DOT, "__GTK_12__" },
-            { SanityConstants.EQUALS, "__GTK_13__" },
-            { SanityConstants.NOT_EQUALS, "__GTK_14__" },
-            { SanityConstants.AND, "__GTK_15__" },
-            { SanityConstants.OR, "__GTK_16__" },
-            { SanityConstants.GREATER_THAN, "__GTK_17__" },
-            { SanityConstants.LESS_THAN, "__GTK_18__" },
-            { SanityConstants.GREATER_THAN_OR_EQUAL, "__GTK_19__" },
-            { SanityConstants.LESS_THAN_OR_EQUAL, "__GTK_20__" }
+            { SanityConstants.DEREFERENCING_SWITCH, SanityConstants.TOKEN_PREFIX + "01__" },
+            { SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.TOKEN_PREFIX + "02__" },
+            { SanityConstants.STRING_DELIMITER, SanityConstants.TOKEN_PREFIX + "03__" },
+            { SanityConstants.COLON, SanityConstants.TOKEN_PREFIX + "04__" },
+            { SanityConstants.SPREAD_OPERATOR, SanityConstants.TOKEN_PREFIX + "05__" },
+            { SanityConstants.ARRAY_INDICATOR, SanityConstants.TOKEN_PREFIX + "06__" },
+            { SanityConstants.OPEN_BRACKET, SanityConstants.TOKEN_PREFIX + "07__" },
+            { SanityConstants.CLOSE_BRACKET, SanityConstants.TOKEN_PREFIX + "08__" },
+            { SanityConstants.OPEN_PAREN, SanityConstants.TOKEN_PREFIX + "09__" },
+            { SanityConstants.CLOSE_PAREN, SanityConstants.TOKEN_PREFIX + "10__" },
+            { SanityConstants.AT, SanityConstants.TOKEN_PREFIX + "11__" },
+            { SanityConstants.DOT, SanityConstants.TOKEN_PREFIX + "12__" },
+            { SanityConstants.EQUALS, SanityConstants.TOKEN_PREFIX + "13__" },
+            { SanityConstants.NOT_EQUALS, SanityConstants.TOKEN_PREFIX + "14__" },
+            { SanityConstants.AND, SanityConstants.TOKEN_PREFIX + "15__" },
+            { SanityConstants.OR, SanityConstants.TOKEN_PREFIX + "16__" },
+            { SanityConstants.GREATER_THAN, SanityConstants.TOKEN_PREFIX + "17__" },
+            { SanityConstants.LESS_THAN, SanityConstants.TOKEN_PREFIX + "18__" },
+            { SanityConstants.GREATER_THAN_OR_EQUAL, SanityConstants.TOKEN_PREFIX + "19__" },
+            { SanityConstants.LESS_THAN_OR_EQUAL, SanityConstants.TOKEN_PREFIX + "20__" }
         };
 
         Tokens = new ReadOnlyDictionary<string, string>(tokens);

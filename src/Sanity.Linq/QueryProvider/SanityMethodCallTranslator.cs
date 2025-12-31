@@ -230,7 +230,7 @@ internal class SanityMethodCallTranslator(
     {
         var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
         var rawPath = transformOperand(selector.Body);
-        var selectorPath = rawPath.Replace(SanityConstants.DEREFERENCING_OPERATOR, "").Replace(SanityConstants.AT, "").Replace(SanityConstants.ARRAY_INDICATOR, "").Trim(SanityConstants.DOT[0]);
+        var selectorPath = rawPath.Replace(SanityConstants.DEREFERENCING_OPERATOR, string.Empty).Replace(SanityConstants.AT, string.Empty).Replace(SanityConstants.ARRAY_INDICATOR, string.Empty).Trim(SanityConstants.DOT[0]);
         if (string.IsNullOrEmpty(selectorPath))
         {
             if (rawPath.Contains(SanityConstants.DEREFERENCING_OPERATOR))
@@ -319,7 +319,7 @@ internal class SanityMethodCallTranslator(
 
         if (e.Arguments[1] is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
 
-        var fieldName = c.Value?.ToString() ?? "";
+        var fieldName = c.Value?.ToString() ?? string.Empty;
         return $"{fieldName}";
     }
 
@@ -363,7 +363,7 @@ internal class SanityMethodCallTranslator(
         if (valueExpr is not ConstantExpression { Value: not null } c2) return null;
 
         var memberName = transformOperand(collectionExpr);
-        var valStr = c2.Value.ToString() ?? "";
+        var valStr = c2.Value.ToString() ?? string.Empty;
         if (c2.Type != typeof(string) && c2.Type != typeof(Guid)) return $"{valStr} {SanityConstants.IN} {memberName}";
 
         valStr = SanityExpressionTransformer.EscapeString(valStr);
@@ -437,7 +437,7 @@ internal class SanityMethodCallTranslator(
                     sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", v);
                     break;
                 default:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? "")).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? string.Empty)).Append(SanityConstants.STRING_DELIMITER);
                     break;
             }
         }

@@ -32,6 +32,15 @@ internal static class SanityConstants
     public const char CHAR_SPACE = ' ';
     public const char CHAR_QUOTE = '"';
     public const char CHAR_SINGLE_QUOTE = '\'';
+    public const char CHAR_HYPHEN = '-';
+    public const char CHAR_AT = '@';
+    public const char CHAR_STAR = '*';
+    public const char CHAR_EQUALS = '=';
+    public const char CHAR_PIPE = '|';
+    public const char CHAR_PLUS = '+';
+    public const char CHAR_BANG = '!';
+    public const char CHAR_BACKSLASH = '\\';
+    public const char CHAR_NEWLINE = '\n';
 
     public const string EQUALS = "==";
     public const string NOT_EQUALS = "!=";
@@ -46,6 +55,7 @@ internal static class SanityConstants
     public const string RANGE = "..";
     public const string INCLUSIVE_RANGE = "...";
     public const string SPACE = " ";
+    public const string INDENT = "  ";
 
     public const string STAR = "*";
     public const string NULL = "null";
@@ -72,7 +82,9 @@ internal static class SanityConstants
     public const string KEY = "_key";
     public const string COALESCE = "coalesce";
     public const string ASSET = "asset";
+    public const string ARROW = "=>";
+    public const string TOKEN_PREFIX = "__GTK_";
 
     public const string ARRAY_FILTER = OPEN_BRACKET + DEFINED + OPEN_PAREN + AT + CLOSE_PAREN + CLOSE_BRACKET;
-    public const string DEREFERENCING_SWITCH = TYPE + EQUALS + SINGLE_QUOTE + REFERENCE + SINGLE_QUOTE + "=>" + AT + DEREFERENCING_OPERATOR;
+    public const string DEREFERENCING_SWITCH = TYPE + EQUALS + SINGLE_QUOTE + REFERENCE + SINGLE_QUOTE + ARROW + AT + DEREFERENCING_OPERATOR;
 }

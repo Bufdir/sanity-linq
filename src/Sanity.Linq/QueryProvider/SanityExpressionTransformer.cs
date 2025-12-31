@@ -16,41 +16,41 @@ internal static class SanityExpressionTransformer
             BinaryExpression b => binaryExpressionHandler(b),
             UnaryExpression u => unaryExpressionHandler(u),
             MethodCallExpression mc => methodCallHandler(mc),
-            ConstantExpression { Value: null } => "null",
-            ConstantExpression c when c.Type == typeof(string) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
+            ConstantExpression { Value: null } => SanityConstants.NULL,
+            ConstantExpression c when c.Type == typeof(string) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}",
             ConstantExpression c when IsNumericOrBoolType(c.Type) => string.Format(CultureInfo.InvariantCulture, "{0}", c.Value).ToLower(),
             ConstantExpression { Value: DateTime dt } => dt == dt.Date
-                ? $"\"{dt:yyyy-MM-dd}\""
-                : $"\"{dt:O}\"",
-            ConstantExpression { Value: DateTimeOffset dto } => $"\"{dto:O}\"",
-            ConstantExpression c when c.Type == typeof(Guid) => $"\"{EscapeString(c.Value?.ToString() ?? "")}\"",
+                ? $"{SanityConstants.STRING_DELIMITER}{dt:yyyy-MM-dd}{SanityConstants.STRING_DELIMITER}"
+                : $"{SanityConstants.STRING_DELIMITER}{dt:O}{SanityConstants.STRING_DELIMITER}",
+            ConstantExpression { Value: DateTimeOffset dto } => $"{SanityConstants.STRING_DELIMITER}{dto:O}{SanityConstants.STRING_DELIMITER}",
+            ConstantExpression c when c.Type == typeof(Guid) => $"{SanityConstants.STRING_DELIMITER}{EscapeString(c.Value?.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}",
             ConstantExpression c when c.Type.IsArray || (c.Type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(c.Type)) => FormatEnumerable(c.Value as IEnumerable, c.Type),
-            ConstantExpression c => c.Value?.ToString() ?? "null",
-            ParameterExpression => "@",
-            NewArrayExpression na => "[" + string.Join(",", na.Expressions.Select(expr => TransformOperand(expr, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))) + "]",
+            ConstantExpression c => c.Value?.ToString() ?? SanityConstants.NULL,
+            ParameterExpression => SanityConstants.AT,
+            NewArrayExpression na => SanityConstants.OPEN_BRACKET + string.Join(SanityConstants.COMMA, na.Expressions.Select(expr => TransformOperand(expr, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))) + SanityConstants.CLOSE_BRACKET,
             _ => throw new Exception($"Operands of type {e.GetType()} and nodeType {e.NodeType} not supported. ")
         };
     }
 
     private static string FormatEnumerable(IEnumerable? enumerable, Type type)
     {
-        if (enumerable == null) return "null";
+        if (enumerable == null) return SanityConstants.NULL;
         if (typeof(IQueryable).IsAssignableFrom(type) && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SanityDocumentSet<>))
             // This is a subquery. If we are here, Evaluator.PartialEval decided it's NOT evaluatable locally (correct).
             // But somehow it reached here as a ConstantExpression? That would be strange.
             // If it's a subquery, we should probably return its GROQ.
             // But for now, let's just avoid the crash.
-            return "@";
+            return SanityConstants.AT;
 
         var items = new List<string>();
         foreach (var item in enumerable)
             switch (item)
             {
                 case null:
-                    items.Add("null");
+                    items.Add(SanityConstants.NULL);
                     break;
                 case string s:
-                    items.Add($"\"{EscapeString(s)}\"");
+                    items.Add($"{SanityConstants.STRING_DELIMITER}{EscapeString(s)}{SanityConstants.STRING_DELIMITER}");
                     break;
                 case bool b:
                     items.Add(b.ToString().ToLower());
@@ -59,16 +59,15 @@ internal static class SanityExpressionTransformer
                     items.Add(string.Format(CultureInfo.InvariantCulture, "{0}", item));
                     break;
                 default:
-                    items.Add($"\"{EscapeString(item.ToString() ?? "")}\"");
+                    items.Add($"{SanityConstants.STRING_DELIMITER}{EscapeString(item.ToString() ?? "")}{SanityConstants.STRING_DELIMITER}");
                     break;
             }
-
-        return "[" + string.Join(",", items) + "]";
+        return SanityConstants.OPEN_BRACKET + string.Join(SanityConstants.COMMA, items) + SanityConstants.CLOSE_BRACKET;
     }
 
     public static string EscapeString(string value)
     {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return value.Replace("\\", "\\\\").Replace(SanityConstants.STRING_DELIMITER, "\\" + SanityConstants.STRING_DELIMITER);
     }
 
     private static bool IsNumericOrBoolType(Type type)
@@ -99,7 +98,7 @@ internal static class SanityExpressionTransformer
             innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
             var refPath = TransformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
-            return refPath == "@" ? "coalesce(_ref, _key)" : $"coalesce({refPath}._ref, {refPath}._key)";
+            return refPath == SanityConstants.AT ? $"{SanityConstants.COALESCE}({SanityConstants.REF}, {SanityConstants.KEY})" : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DOT}{SanityConstants.REF}, {refPath}{SanityConstants.DOT}{SanityConstants.KEY})";
         }
 
         // General fallback for denormalized properties on SanityReference.Value
@@ -109,16 +108,16 @@ internal static class SanityExpressionTransformer
             var propName = member.GetJsonProperty();
             var refPath = TransformOperand(innerM2.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
-            return refPath == "@"
-                ? $"coalesce(@->{propName}, {propName})"
-                : $"coalesce({refPath}->{propName}, {refPath}.{propName})";
+            return refPath == SanityConstants.AT
+                ? $"{SanityConstants.COALESCE}({SanityConstants.AT}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {propName})"
+                : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {refPath}{SanityConstants.DOT}{propName})";
         }
 
         var memberPath = new List<string>();
 
         if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
             member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-            memberPath.Add(m.Expression is ParameterExpression ? "@->" : "->");
+            memberPath.Add(m.Expression is ParameterExpression ? SanityConstants.AT + SanityConstants.DEREFERENCING_OPERATOR : SanityConstants.DEREFERENCING_OPERATOR);
         else
             memberPath.Add(member.GetJsonProperty());
 
@@ -126,15 +125,15 @@ internal static class SanityExpressionTransformer
             memberPath.Add(TransformOperand(inner, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler));
 
         return memberPath
-            .Aggregate((a1, a2) => a1 != "->" && a2 != "->" ? $"{a2}.{a1}" : $"{a2}{a1}")
-            .Replace(".->", "->")
-            .Replace("->.", "->");
+            .Aggregate((a1, a2) => a1 != SanityConstants.DEREFERENCING_OPERATOR && a2 != SanityConstants.DEREFERENCING_OPERATOR ? $"{a2}{SanityConstants.DOT}{a1}" : $"{a2}{a1}")
+            .Replace(SanityConstants.DOT + SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DEREFERENCING_OPERATOR)
+            .Replace(SanityConstants.DEREFERENCING_OPERATOR + SanityConstants.DOT, SanityConstants.DEREFERENCING_OPERATOR);
     }
 
     private static string HandleNewExpression(NewExpression nw, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
         var args = nw.Arguments
-            .Select(arg => arg is NewExpression ? "{" + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback) + "}" : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))
+            .Select(arg => arg is NewExpression ? SanityConstants.OPEN_BRACE + TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback) + SanityConstants.CLOSE_BRACE : TransformOperand(arg, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback))
             .ToArray();
         var props = (nw.Members ?? Enumerable.Empty<MemberInfo>())
             .Select(prop => prop.Name.ToCamelCase())
@@ -144,17 +143,17 @@ internal static class SanityExpressionTransformer
             throw new Exception("Selections must be anonymous types without a constructor.");
 
         var projection = args
-            .Select((t, i) => t.Equals(props[i]) ? t : $"\"{props[i]}\": {t}")
+            .Select((t, i) => t.Equals(props[i]) ? t : $"{SanityConstants.STRING_DELIMITER}{props[i]}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON} {t}")
             .ToList();
 
-        return string.Join(", ", projection);
+        return string.Join(SanityConstants.COMMA + " ", projection);
     }
 
     public static string TransformUnaryExpression(UnaryExpression u, Func<Expression, string> operandTransformer)
     {
         return u.NodeType switch
         {
-            ExpressionType.Not => "!(" + operandTransformer(u.Operand) + ")",
+            ExpressionType.Not => SanityConstants.NOT + SanityConstants.OPEN_PAREN + operandTransformer(u.Operand) + SanityConstants.CLOSE_PAREN,
             ExpressionType.Convert => operandTransformer(u.Operand),
             _ => throw new Exception($"Unary expression of type {u.GetType()} and nodeType {u.NodeType} not supported. ")
         };

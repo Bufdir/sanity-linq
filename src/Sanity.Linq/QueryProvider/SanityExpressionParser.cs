@@ -139,14 +139,14 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
         var left = TransformOperand(b.Left);
         var right = TransformOperand(b.Right);
 
-        if (left == "null" && op is SanityConstants.EQUALS or SanityConstants.NOT_EQUALS)
+        if (left == SanityConstants.NULL && op is SanityConstants.EQUALS or SanityConstants.NOT_EQUALS)
             // Swap left and right so null is always on the right for comparison logic
             (left, right) = (right, left);
 
         return right switch
         {
-            "null" when op == SanityConstants.EQUALS => $"(!(defined({left})) || {left} {op} {right})",
-            "null" when op == SanityConstants.NOT_EQUALS => $"(defined({left}) && {left} {op} {right})",
+            SanityConstants.NULL when op == SanityConstants.EQUALS => $"(!({SanityConstants.DEFINED}({left})) || {left} {op} {right})",
+            SanityConstants.NULL when op == SanityConstants.NOT_EQUALS => $"({SanityConstants.DEFINED}({left}) && {left} {op} {right})",
             _ => $"{left} {op} {right}"
         };
     }

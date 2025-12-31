@@ -42,29 +42,29 @@ internal class SanityMethodCallTranslator(
 
             case "_id":
             case "SanityId":
-                return "_id";
+                return SanityConstants.ID;
 
             case "_createdAt":
             case "SanityCreatedAt":
-                return "_createdAt";
+                return SanityConstants.CREATED_AT;
 
             case "_updatedAt":
             case "SanityUpdatedAt":
-                return "_updatedAt";
+                return SanityConstants.UPDATED_AT;
 
             case "_rev":
             case "SanityRevision":
-                return "_rev";
+                return SanityConstants.REVISION;
 
             case "_type":
             case "SanityType":
-                return "_type";
+                return SanityConstants.TYPE;
 
             case "IsDefined":
                 return HandleIsDefined(e);
 
             case "IsDraft":
-                return "_id in path(\"drafts.**\")";
+                return $"{SanityConstants.ID} {SanityConstants.IN} {SanityConstants.PATH}(\"drafts.**\")";
 
             case "Cast":
                 visit(e.Arguments[0]);
@@ -199,12 +199,12 @@ internal class SanityMethodCallTranslator(
         {
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
             {
-                currentIncludePath += "[_type == \"reference\"]";
+                currentIncludePath += $"[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{SanityConstants.REFERENCE}\"]";
             }
             else
             {
                 var sanityType = targetType.GetSanityTypeName();
-                currentIncludePath += $"[_type == \"{sanityType}\"]";
+                currentIncludePath += $"[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{sanityType}\"]";
             }
         }
 
@@ -217,12 +217,12 @@ internal class SanityMethodCallTranslator(
     {
         var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
         var rawPath = transformOperand(selector.Body);
-        var selectorPath = rawPath.Replace("->", "").Replace("@", "").Replace("[]", "").Trim('.');
+        var selectorPath = rawPath.Replace(SanityConstants.DEREFERENCING_OPERATOR, "").Replace(SanityConstants.AT, "").Replace(SanityConstants.ARRAY_INDICATOR, "").Trim(SanityConstants.DOT[0]);
         if (string.IsNullOrEmpty(selectorPath))
         {
-            if (rawPath.Contains("->"))
+            if (rawPath.Contains(SanityConstants.DEREFERENCING_OPERATOR))
             {
-                selectorPath = "->";
+                selectorPath = SanityConstants.DEREFERENCING_OPERATOR;
             }
             else
             {
@@ -232,7 +232,7 @@ internal class SanityMethodCallTranslator(
             }
         }
 
-        currentIncludePath = selectorPath.StartsWith("[") ? $"{currentIncludePath}{selectorPath}" : $"{currentIncludePath}.{selectorPath}".TrimEnd('.');
+        currentIncludePath = selectorPath.StartsWith(SanityConstants.OPEN_BRACKET) ? $"{currentIncludePath}{selectorPath}" : $"{currentIncludePath}{SanityConstants.DOT}{selectorPath}".TrimEnd(SanityConstants.DOT[0]);
         AddInclude(currentIncludePath, selector.Body.Type, null);
         currentType = selector.Body.Type;
         return currentIncludePath;
@@ -296,10 +296,10 @@ internal class SanityMethodCallTranslator(
             // Only include items that are actual references.
             // We include anything with _type == "reference" even if _ref is missing,
             // as some datasets use _key as the identifier for inline-expanded references.
-            return $"{operand}[_type == \"reference\"]";
+            return $"{operand}[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{SanityConstants.REFERENCE}\"]";
 
         var sanityType = targetType.GetSanityTypeName();
-        return $"{operand}[_type == \"{sanityType}\"]";
+        return $"{operand}[{SanityConstants.TYPE} {SanityConstants.EQUALS} \"{sanityType}\"]";
     }
 
     private static string HandleGetValue(MethodCallExpression e)
@@ -328,8 +328,8 @@ internal class SanityMethodCallTranslator(
         if (string.IsNullOrEmpty(leftAny) || string.IsNullOrEmpty(rightAny))
             throw new Exception("'Contains' is only supported for simple expressions with non-null values.");
 
-        if (leftAny == "@") return $"{rightAny} in @";
-        return $"{rightAny} in {leftAny}";
+        if (leftAny == SanityConstants.AT) return $"{rightAny} {SanityConstants.IN} {SanityConstants.AT}";
+        return $"{rightAny} {SanityConstants.IN} {leftAny}";
     }
 
     private string? HandleEnumerableContains(Expression collectionExpr, Expression valueExpr)
@@ -343,7 +343,7 @@ internal class SanityMethodCallTranslator(
 
         // If the memberName is @->id or something similar, it means we are checking a reference's ID
         // In GROQ, "refID in [ids]" is more efficient than "count([ids][@ == refID]) > 0"
-        return $"{memberName} in {values}";
+        return $"{memberName} {SanityConstants.IN} {values}";
     }
 
     private string? HandlePropertyContainsConstant(Expression collectionExpr, Expression valueExpr)
@@ -355,10 +355,10 @@ internal class SanityMethodCallTranslator(
 
         var memberName = transformOperand(collectionExpr);
         var valStr = c2.Value.ToString() ?? "";
-        if (c2.Type != typeof(string) && c2.Type != typeof(Guid)) return $"{valStr} in {memberName}";
+        if (c2.Type != typeof(string) && c2.Type != typeof(Guid)) return $"{valStr} {SanityConstants.IN} {memberName}";
 
         valStr = SanityExpressionTransformer.EscapeString(valStr);
-        return $"\"{valStr}\" in {memberName}";
+        return $"\"{valStr}\" {SanityConstants.IN} {memberName}";
     }
 
     private string? HandlePropertyContainsProperty(Expression collectionExpr, Expression valueExpr)
@@ -370,7 +370,7 @@ internal class SanityMethodCallTranslator(
         {
             var left = transformOperand(collUnwrapped);
             var right = transformOperand(valUnwrapped);
-            return $"{right} in {left}";
+            return $"{right} {SanityConstants.IN} {left}";
         }
 
         return null;
@@ -435,7 +435,7 @@ internal class SanityMethodCallTranslator(
         var value = transformOperand(e.Arguments[0]);
         var member = transformOperand(e.Object);
 
-        return $"{value} in {member}";
+        return $"{value} {SanityConstants.IN} {member}";
     }
 
     private string HandleCount(MethodCallExpression e)
@@ -443,12 +443,12 @@ internal class SanityMethodCallTranslator(
         if (isTopLevel)
         {
             if (e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
-            if (!queryBuilder.IsSilent) queryBuilder.AggregateFunction = "count";
+            if (!queryBuilder.IsSilent) queryBuilder.AggregateFunction = SanityConstants.COUNT;
         }
 
-        var operand = e.Arguments.Count > 1 ? HandleWhere(e) : e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
+        var operand = e.Arguments.Count > 1 ? HandleWhere(e) : e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : SanityConstants.AT;
 
-        return $"count({operand})";
+        return $"{SanityConstants.COUNT}({operand})";
     }
 
     private string HandleImplicit(MethodCallExpression e)
@@ -464,8 +464,8 @@ internal class SanityMethodCallTranslator(
             if (e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
             if (!queryBuilder.IsSilent)
             {
-                queryBuilder.AggregateFunction = "count";
-                queryBuilder.AggregatePostFix = " > 0";
+                queryBuilder.AggregateFunction = SanityConstants.COUNT;
+                queryBuilder.AggregatePostFix = $" {SanityConstants.GREATER_THAN} 0";
             }
         }
 
@@ -494,7 +494,7 @@ internal class SanityMethodCallTranslator(
                         var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
                         var targetOperand = transformOperand(target);
                         var values = JoinValues(collection);
-                        return $"{targetOperand} in {values}";
+                        return $"{targetOperand} {SanityConstants.IN} {values}";
                     }
                 }
             }
@@ -504,17 +504,17 @@ internal class SanityMethodCallTranslator(
                 // Collection.Any(predicate) -> count(Collection[predicate]) > 0
                 var filter = HandleWhere(e);
                 // HandleWhere already returns the filtered operand if not top-level
-                return $"count({filter}) > 0";
+                return $"{SanityConstants.COUNT}({filter}) {SanityConstants.GREATER_THAN} 0";
             }
         }
 
-        var op = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : "@";
-        return $"count({op}) > 0";
+        var op = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : SanityConstants.AT;
+        return $"{SanityConstants.COUNT}({op}) {SanityConstants.GREATER_THAN} 0";
     }
 
     private string HandleIsDefined(MethodCallExpression e)
     {
-        return e.Arguments.Count > 0 ? $"defined({transformOperand(e.Arguments[0])})" : string.Empty;
+        return e.Arguments.Count > 0 ? $"{SanityConstants.DEFINED}({transformOperand(e.Arguments[0])})" : string.Empty;
     }
 
     private string HandleIsNullOrEmpty(MethodCallExpression e)
@@ -522,7 +522,7 @@ internal class SanityMethodCallTranslator(
         if (e.Arguments.Count == 0) return string.Empty;
 
         var operand = transformOperand(e.Arguments[0]);
-        return $"({operand} == null || {operand} == \"\" || !(defined({operand})))";
+        return $"({operand} {SanityConstants.EQUALS} {SanityConstants.NULL} || {operand} {SanityConstants.EQUALS} \"\" || !({SanityConstants.DEFINED}({operand})))";
     }
 
     private string HandleOrdering(MethodCallExpression e, bool descending)
@@ -537,7 +537,7 @@ internal class SanityMethodCallTranslator(
         var simplifiedExpression = Evaluator.PartialEval(arg);
         if (simplifiedExpression is not LambdaExpression lambda) return string.Empty;
         if (isTopLevel && !queryBuilder.IsSilent)
-            queryBuilder.Orderings.Add(transformOperand(lambda.Body) + (descending ? " desc" : " asc"));
+            queryBuilder.Orderings.Add(transformOperand(lambda.Body) + (descending ? $" {SanityConstants.DESC}" : $" {SanityConstants.ASC}"));
 
         return string.Empty;
     }
@@ -578,9 +578,9 @@ internal class SanityMethodCallTranslator(
 
         var member = transformOperand(e.Object);
         var valueExpr = Evaluator.PartialEval(e.Arguments[0]);
-        if (valueExpr is ConstantExpression { Value: string s }) return $"{member} match \"{SanityExpressionTransformer.EscapeString(s)}*\"";
+        if (valueExpr is ConstantExpression { Value: string s }) return $"{member} {SanityConstants.MATCH} \"{SanityExpressionTransformer.EscapeString(s)}{SanityConstants.STAR}\"";
 
         var value = transformOperand(e.Arguments[0]);
-        return $"{member} match {value} + \"*\"";
+        return $"{member} {SanityConstants.MATCH} {value} + \"{SanityConstants.STAR}\"";
     }
 }

@@ -253,7 +253,7 @@ internal sealed partial class SanityQueryBuilder
     {
         var sb = new StringBuilder();
         // Select all
-        sb.Append(SanityConstants.STAR);
+        sb.Append(SanityConstants.CHAR_STAR);
 
         AddDocTypeConstraintIfAny();
         AppendConstraints(sb);
@@ -276,7 +276,7 @@ internal sealed partial class SanityQueryBuilder
     {
         if (PostFilters.Count <= 0) return;
 
-        sb.Append(SanityConstants.OPEN_BRACKET);
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
         var first = true;
         foreach (var filter in PostFilters)
         {
@@ -285,7 +285,7 @@ internal sealed partial class SanityQueryBuilder
             first = false;
         }
 
-        sb.Append(SanityConstants.CLOSE_BRACKET);
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
     public void AddConstraint(string constraint)
@@ -590,7 +590,7 @@ internal sealed partial class SanityQueryBuilder
     {
         if (Constraints.Count <= 0) return;
 
-        sb.Append(SanityConstants.OPEN_BRACKET);
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
         var first = true;
         foreach (var constraint in Constraints)
         {
@@ -599,7 +599,7 @@ internal sealed partial class SanityQueryBuilder
             first = false;
         }
 
-        sb.Append(SanityConstants.CLOSE_BRACKET);
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
     private void AppendOrderings(StringBuilder sb)
@@ -610,12 +610,12 @@ internal sealed partial class SanityQueryBuilder
         var first = true;
         foreach (var ordering in Orderings)
         {
-            if (!first) sb.Append(SanityConstants.COMMA).Append(SanityConstants.SPACE);
+            if (!first) sb.Append(SanityConstants.CHAR_COMMA).Append(SanityConstants.CHAR_SPACE);
             sb.Append(ordering);
             first = false;
         }
 
-        sb.Append(SanityConstants.CLOSE_PAREN);
+        sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
     }
 
     public void AddOrdering(string ordering)
@@ -734,20 +734,12 @@ internal sealed partial class SanityQueryBuilder
             foreach (var key in sortedKeys)
                 if (i + key.Length <= groq.Length)
                 {
-                    var match = true;
-                    for (var j = 0; j < key.Length; j++)
-                        if (groq[i + j] != key[j])
-                        {
-                            match = false;
-                            break;
-                        }
+                    var match = !key.Where((t, j) => groq[i + j] != t).Any();
 
-                    if (match)
-                    {
-                        matchedKey = key;
-                        matchedToken = tokens[key];
-                        break;
-                    }
+                    if (!match) continue;
+                    matchedKey = key;
+                    matchedToken = tokens[key];
+                    break;
                 }
 
             if (matchedKey != null)
@@ -793,11 +785,9 @@ internal sealed partial class SanityQueryBuilder
 
             sb.Append(c);
 
-            if (inQuotes)
-            {
-                if (c == '\\') isEscaped = !isEscaped;
-                else isEscaped = false;
-            }
+            if (!inQuotes) continue;
+            if (c == '\\') isEscaped = !isEscaped;
+            else isEscaped = false;
         }
 
         var json = sb.ToString();
@@ -843,7 +833,7 @@ internal sealed partial class SanityQueryBuilder
         if (string.IsNullOrEmpty(AggregateFunction)) return;
 
         sb.Insert(0, AggregateFunction + SanityConstants.OPEN_PAREN);
-        sb.Append(SanityConstants.CLOSE_PAREN);
+        sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
         if (!string.IsNullOrEmpty(AggregatePostFix)) sb.Append(AggregatePostFix);
     }
 

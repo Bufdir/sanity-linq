@@ -41,11 +41,11 @@ internal static class SanityExpressionTransformer
             return SanityConstants.AT;
 
         var sb = new StringBuilder();
-        sb.Append(SanityConstants.OPEN_BRACKET);
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
         var first = true;
         foreach (var item in enumerable)
         {
-            if (!first) sb.Append(SanityConstants.COMMA);
+            if (!first) sb.Append(SanityConstants.CHAR_COMMA);
             first = false;
 
             switch (item)
@@ -68,7 +68,7 @@ internal static class SanityExpressionTransformer
             }
         }
 
-        sb.Append(SanityConstants.CLOSE_BRACKET);
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
         return sb.ToString();
     }
 
@@ -164,7 +164,7 @@ internal static class SanityExpressionTransformer
         var sb = new StringBuilder();
         for (var i = 0; i < nw.Arguments.Count; i++)
         {
-            if (i > 0) sb.Append(SanityConstants.COMMA).Append(SanityConstants.SPACE);
+            if (i > 0) sb.Append(SanityConstants.CHAR_COMMA).Append(SanityConstants.CHAR_SPACE);
 
             var arg = nw.Arguments[i];
             var propName = members[i].Name.ToCamelCase();
@@ -177,7 +177,7 @@ internal static class SanityExpressionTransformer
                 sb.Append(transformedArg);
             else
                 sb.Append(SanityConstants.STRING_DELIMITER).Append(propName).Append(SanityConstants.STRING_DELIMITER)
-                    .Append(SanityConstants.COLON).Append(SanityConstants.SPACE).Append(transformedArg);
+                    .Append(SanityConstants.CHAR_COLON).Append(SanityConstants.CHAR_SPACE).Append(transformedArg);
         }
 
         return sb.ToString();

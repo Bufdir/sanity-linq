@@ -142,10 +142,20 @@ internal class SanityMethodCallTranslator(
         if (lambda.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
 
-        if (isTopLevel && !queryBuilder.IsSilent)
+        if (!isTopLevel || queryBuilder.IsSilent) return transformOperand(e.Arguments[0]);
+
+        var projection = transformOperand(lambda.Body);
+        var isComplex = lambda.Body is MemberExpression && !lambda.Body.Type.IsPrimitive && lambda.Body.Type != typeof(string) && !typeof(IEnumerable).IsAssignableFrom(lambda.Body.Type);
+
+        if (string.IsNullOrEmpty(queryBuilder.Projection) || queryBuilder.Projection == SanityConstants.AT || queryBuilder.Projection == SanityConstants.SPREAD_OPERATOR)
         {
-            queryBuilder.Projection = transformOperand(lambda.Body);
-            if (lambda.Body is MemberExpression && !lambda.Body.Type.IsPrimitive && lambda.Body.Type != typeof(string) && !typeof(IEnumerable).IsAssignableFrom(lambda.Body.Type)) queryBuilder.FlattenProjection = true;
+            queryBuilder.Projection = projection;
+            queryBuilder.FlattenProjection = isComplex;
+        }
+        else
+        {
+            queryBuilder.Projection = $"{queryBuilder.Projection} {SanityConstants.OPEN_BRACE} {projection} {SanityConstants.CLOSE_BRACE}";
+            if (isComplex) queryBuilder.FlattenProjection = true;
         }
 
         return transformOperand(e.Arguments[0]);
@@ -252,7 +262,7 @@ internal class SanityMethodCallTranslator(
     private static (Expression body, List<Expression> selectors) ExtractSelectors(Expression body)
     {
         var selectors = new List<Expression>();
-        while (body is MethodCallExpression m && (m.Method.Name == "Select" || m.Method.Name == "SelectMany" || m.Method.Name == "OfType"))
+        while (body is MethodCallExpression { Method.Name: "Select" or "SelectMany" or "OfType" } m)
         {
             if (m.Arguments.Count >= 2)
                 selectors.Add(m.Arguments[1]);
@@ -537,7 +547,10 @@ internal class SanityMethodCallTranslator(
         var simplifiedExpression = Evaluator.PartialEval(arg);
         if (simplifiedExpression is not LambdaExpression lambda) return string.Empty;
         if (isTopLevel && !queryBuilder.IsSilent)
+        {
+            if (e.Method.Name.StartsWith("OrderBy")) queryBuilder.Orderings.Clear();
             queryBuilder.Orderings.Add(transformOperand(lambda.Body) + (descending ? $" {SanityConstants.DESC}" : $" {SanityConstants.ASC}"));
+        }
 
         return string.Empty;
     }

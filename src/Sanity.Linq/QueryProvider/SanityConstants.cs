@@ -1,4 +1,5 @@
 ﻿// ReSharper disable InconsistentNaming
+
 namespace Sanity.Linq.QueryProvider;
 
 internal static class SanityConstants
@@ -73,6 +74,8 @@ internal static class SanityConstants
     public const string ASC = "asc";
     public const string DESC = "desc";
     public const string COUNT = "count";
+    public const string MAX = "max";
+    public const string MIN = "min";
     public const string DEFINED = "defined";
     public const string REFERENCES = "references";
     public const string PATH = "path";

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.Internal;
 
@@ -10,6 +11,8 @@ internal class SanityMethodCallTranslator(
     Func<Expression, Expression?> visit,
     bool isTopLevel = false)
 {
+    private static string CountGreaterThanZeroPostFix => $"{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
+
     private string TransformMethodCallExpression(MethodCallExpression e)
     {
         switch (e.Method.Name)
@@ -82,6 +85,12 @@ internal class SanityMethodCallTranslator(
             case "LongCount":
                 return HandleCount(e);
 
+            case "Max":
+                return HandleMaxMin(e, SanityConstants.MAX);
+
+            case "Min":
+                return HandleMaxMin(e, SanityConstants.MIN);
+
             case "Take":
                 return HandleTake(e);
 
@@ -106,16 +115,11 @@ internal class SanityMethodCallTranslator(
 
     private string HandleWhere(MethodCallExpression e)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
 
-        if (e.Arguments.Count <= 1) return transformOperand(e.Arguments[0]);
+        if (!TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
 
-        var arg = e.Arguments[1];
-        if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
-
-        if (arg is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
-
-        var filter = transformOperand(lambda.Body);
+        var filter = transformOperand(lambda!.Body);
 
         if (isTopLevel && !queryBuilder.IsSilent)
         {
@@ -133,43 +137,33 @@ internal class SanityMethodCallTranslator(
 
     private string HandleSelect(MethodCallExpression e)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
 
-        if (e.Arguments.Count <= 1) return transformOperand(e.Arguments[0]);
+        if (!TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
 
-        var arg = e.Arguments[1];
-        if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
-
-        if (arg is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
-
-        if (lambda.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
+        if (lambda!.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
 
         if (!isTopLevel || queryBuilder.IsSilent) return transformOperand(e.Arguments[0]);
 
         var projection = transformOperand(lambda.Body);
+        if (lambda.Body is NewExpression)
+            projection = $"{SanityConstants.OPEN_BRACE}{projection}{SanityConstants.CLOSE_BRACE}";
+
         var isComplex = lambda.Body is MemberExpression && !lambda.Body.Type.IsPrimitive && lambda.Body.Type != typeof(string) && !typeof(IEnumerable).IsAssignableFrom(lambda.Body.Type);
 
-        if (string.IsNullOrEmpty(queryBuilder.Projection) || queryBuilder.Projection == SanityConstants.AT || queryBuilder.Projection == SanityConstants.SPREAD_OPERATOR)
-        {
-            queryBuilder.Projection = projection;
-            queryBuilder.FlattenProjection = isComplex;
-        }
-        else
-        {
-            queryBuilder.Projection = $"{queryBuilder.Projection} {SanityConstants.OPEN_BRACE} {projection} {SanityConstants.CLOSE_BRACE}";
-            if (isComplex) queryBuilder.FlattenProjection = true;
-        }
+        queryBuilder.AddProjection(projection);
+        if (isComplex) queryBuilder.FlattenProjection = true;
 
         return transformOperand(e.Arguments[0]);
     }
 
     private string HandleInclude(MethodCallExpression e)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
-        var lambda = ExtractIncludeLambda(e);
+        VisitSourceIfTopLevel(e);
+        if (!TryGetLambda(e, 1, out var lambda)) throw new Exception("Include method second argument must be a lambda expression.");
 
-        var (body, selectors) = ExtractSelectors(lambda.Body);
+        var (body, selectors) = ExtractSelectors(lambda!.Body);
 
         var wasSilent = queryBuilder.IsSilent;
         var wasFallback = queryBuilder.UseCoalesceFallback;
@@ -251,16 +245,6 @@ internal class SanityMethodCallTranslator(
         return currentIncludePath;
     }
 
-    private static LambdaExpression ExtractIncludeLambda(MethodCallExpression e)
-    {
-        if (e.Arguments.Count < 2) throw new Exception("Include method must have at least two arguments.");
-
-        var arg = e.Arguments[1];
-        if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
-        if (arg is UnaryExpression { NodeType: ExpressionType.Convert } convert) arg = convert.Operand;
-
-        return arg as LambdaExpression ?? throw new Exception("Include method second argument must be a lambda expression.");
-    }
 
     private static (Expression body, List<Expression> selectors) ExtractSelectors(Expression body)
     {
@@ -290,9 +274,7 @@ internal class SanityMethodCallTranslator(
 
     private static string GetIncludeSourceName(MethodCallExpression e, string targetName)
     {
-        if (e.Arguments.Count >= 3)
-            if (e.Arguments[2] is ConstantExpression { Value: string s })
-                return s;
+        if (e.Arguments is [_, _, ConstantExpression { Value: string s }, ..]) return s;
 
         return targetName.Split('.').Last();
     }
@@ -414,12 +396,12 @@ internal class SanityMethodCallTranslator(
     private static string JoinValues(IEnumerable values)
     {
         var sb = new StringBuilder();
-        sb.Append(SanityConstants.OPEN_BRACKET);
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
         var first = true;
         foreach (var v in values)
         {
             if (v == null) continue;
-            if (!first) sb.Append(SanityConstants.COMMA);
+            if (!first) sb.Append(SanityConstants.CHAR_COMMA);
             first = false;
 
             switch (v)
@@ -442,7 +424,7 @@ internal class SanityMethodCallTranslator(
             }
         }
 
-        sb.Append(SanityConstants.CLOSE_BRACKET);
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
         return sb.ToString();
     }
 
@@ -460,7 +442,7 @@ internal class SanityMethodCallTranslator(
     {
         if (isTopLevel)
         {
-            if (e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
+            VisitSourceIfTopLevel(e);
             if (!queryBuilder.IsSilent) queryBuilder.AggregateFunction = SanityConstants.COUNT;
         }
 
@@ -469,9 +451,37 @@ internal class SanityMethodCallTranslator(
         return $"{SanityConstants.COUNT}({operand})";
     }
 
+    private string HandleMaxMin(MethodCallExpression e, string function)
+    {
+        var direction = function == SanityConstants.MAX ? SanityConstants.DESC : SanityConstants.ASC;
+        var orderPipe = $"{SanityConstants.SPACE}{SanityConstants.PIPE}{SanityConstants.SPACE}{SanityConstants.ORDER}{SanityConstants.OPEN_PAREN}{SanityConstants.AT}{SanityConstants.SPACE}{direction}{SanityConstants.CLOSE_PAREN}{SanityConstants.OPEN_BRACKET}0{SanityConstants.CLOSE_BRACKET}";
+
+        if (isTopLevel)
+        {
+            VisitSourceIfTopLevel(e);
+
+            if (!queryBuilder.IsSilent)
+            {
+                if (TryGetLambda(e, 1, out var lambda))
+                    queryBuilder.AddProjection(transformOperand(lambda!.Body));
+
+                queryBuilder.AggregateFunction = string.Empty;
+                queryBuilder.AggregatePostFix = orderPipe;
+                queryBuilder.ExpectsArray = false;
+            }
+        }
+
+        var source = transformOperand(e.Arguments[0]);
+        var selector = TryGetLambda(e, 1, out var l) ? transformOperand(l!.Body) : SanityConstants.AT;
+
+        return selector == SanityConstants.AT
+            ? $"({source}){orderPipe}"
+            : $"({source}){SanityConstants.DOT}{selector}{orderPipe}";
+    }
+
     private string HandleImplicit(MethodCallExpression e)
     {
-        if (isTopLevel && e.Arguments.Count > 0) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
         return e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : string.Empty;
     }
 
@@ -479,52 +489,64 @@ internal class SanityMethodCallTranslator(
     {
         if (isTopLevel)
         {
-            if (e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
+            VisitSourceIfTopLevel(e);
             if (!queryBuilder.IsSilent)
             {
                 queryBuilder.AggregateFunction = SanityConstants.COUNT;
-                queryBuilder.AggregatePostFix = $" {SanityConstants.GREATER_THAN} 0";
+                queryBuilder.AggregatePostFix = CountGreaterThanZeroPostFix;
             }
         }
 
-        if (e.Arguments.Count > 1)
+        if (TryGetLambda(e, 1, out var lambda))
         {
+            if (TryHandleAnyConstantCollection(e, lambda!, out var constantResult))
+                return constantResult;
+
             var collectionExpr = e.Arguments[0];
-            var predicate = e.Arguments[1];
-            if (predicate is UnaryExpression { NodeType: ExpressionType.Quote } quote) predicate = quote.Operand;
-
-            if (predicate is LambdaExpression lambda)
-                // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
-                // If the collection can be evaluated locally, use HandleContains logic
-                if (collectionExpr is ConstantExpression expression &&
-                    lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
-                {
-                    // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
-                    // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
-                    Expression? target = null;
-                    if (be.Left == lambda.Parameters[0]) target = be.Right;
-                    else if (be.Right == lambda.Parameters[0]) target = be.Left;
-
-                    if (target != null)
-                    {
-                        var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
-                        var targetOperand = transformOperand(target);
-                        var values = JoinValues(collection);
-                        return $"{targetOperand} {SanityConstants.IN} {values}";
-                    }
-                }
-
             if (collectionExpr.Type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(collectionExpr.Type))
             {
                 // Collection.Any(predicate) -> count(Collection[predicate]) > 0
                 var filter = HandleWhere(e);
-                // HandleWhere already returns the filtered operand if not top-level
-                return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{filter}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
+                return WrapWithCountGreaterThanZero(filter);
             }
         }
 
         var op = e.Arguments.Count > 0 ? transformOperand(e.Arguments[0]) : SanityConstants.AT;
-        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{op}{SanityConstants.CLOSE_PAREN}{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
+        return WrapWithCountGreaterThanZero(op);
+    }
+
+    private bool TryHandleAnyConstantCollection(MethodCallExpression e, LambdaExpression lambda, [NotNullWhen(true)] out string? result)
+    {
+        result = null;
+        var collectionExpr = e.Arguments[0];
+
+        // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
+        // If the collection can be evaluated locally, use HandleContains logic
+        if (collectionExpr is ConstantExpression expression &&
+            lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
+        {
+            // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
+            // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
+            Expression? target = null;
+            if (be.Left == lambda.Parameters[0]) target = be.Right;
+            else if (be.Right == lambda.Parameters[0]) target = be.Left;
+
+            if (target != null)
+            {
+                var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
+                var targetOperand = transformOperand(target);
+                var values = JoinValues(collection);
+                result = $"{targetOperand} {SanityConstants.IN} {values}";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string WrapWithCountGreaterThanZero(string operand)
+    {
+        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.CLOSE_PAREN}{CountGreaterThanZeroPostFix}";
     }
 
     private string HandleIsDefined(MethodCallExpression e)
@@ -542,18 +564,14 @@ internal class SanityMethodCallTranslator(
 
     private string HandleOrdering(MethodCallExpression e, bool descending)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
 
-        if (e.Arguments.Count <= 1) return string.Empty;
+        if (!TryGetLambda(e, 1, out var lambda)) return string.Empty;
 
-        var arg = e.Arguments[1];
-        if (arg is UnaryExpression { NodeType: ExpressionType.Quote } quote) arg = quote.Operand;
-
-        if (arg is not LambdaExpression lambda) return string.Empty;
         if (isTopLevel && !queryBuilder.IsSilent)
         {
             if (e.Method.Name.StartsWith("OrderBy")) queryBuilder.Orderings.Clear();
-            queryBuilder.AddOrdering(transformOperand(lambda.Body) + (descending ? SanityConstants.SPACE + SanityConstants.DESC : SanityConstants.SPACE + SanityConstants.ASC));
+            queryBuilder.AddOrdering(transformOperand(lambda!.Body) + (descending ? SanityConstants.SPACE + SanityConstants.DESC : SanityConstants.SPACE + SanityConstants.ASC));
         }
 
         return string.Empty;
@@ -561,7 +579,7 @@ internal class SanityMethodCallTranslator(
 
     private string HandleSkip(MethodCallExpression e)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
 
         if (e.Arguments.Count <= 1) return string.Empty;
 
@@ -575,7 +593,7 @@ internal class SanityMethodCallTranslator(
 
     private string HandleTake(MethodCallExpression e)
     {
-        if (isTopLevel) visit(e.Arguments[0]);
+        VisitSourceIfTopLevel(e);
 
         if (e.Arguments.Count <= 1) return string.Empty;
 
@@ -597,5 +615,28 @@ internal class SanityMethodCallTranslator(
 
         var value = transformOperand(e.Arguments[0]);
         return $"{member}{SanityConstants.SPACE}{SanityConstants.MATCH}{SanityConstants.SPACE}{value}{SanityConstants.SPACE}{SanityConstants.PLUS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{SanityConstants.STAR}{SanityConstants.STRING_DELIMITER}";
+    }
+
+    private void VisitSourceIfTopLevel(MethodCallExpression e)
+    {
+        if (isTopLevel && e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
+    }
+
+    private static bool TryGetLambda(MethodCallExpression e, int index, out LambdaExpression? lambda)
+    {
+        lambda = null;
+        if (e.Arguments.Count <= index) return false;
+
+        var arg = e.Arguments[index];
+        while (arg is UnaryExpression { NodeType: ExpressionType.Quote or ExpressionType.Convert } unary)
+            arg = unary.Operand;
+
+        if (arg is LambdaExpression l)
+        {
+            lambda = l;
+            return true;
+        }
+
+        return false;
     }
 }

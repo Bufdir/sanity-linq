@@ -288,6 +288,21 @@ internal sealed partial class SanityQueryBuilder
         sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
+    public void AddProjection(string projection)
+    {
+        if (string.IsNullOrWhiteSpace(projection)) return;
+        if (string.IsNullOrEmpty(Projection))
+        {
+            Projection = projection;
+            return;
+        }
+
+        if (projection.StartsWith(SanityConstants.OPEN_BRACE))
+            Projection = $"{Projection}{SanityConstants.SPACE}{projection}";
+        else
+            Projection = $"{Projection}{SanityConstants.DOT}{projection}";
+    }
+
     public void AddConstraint(string constraint)
     {
         if (string.IsNullOrWhiteSpace(constraint)) return;
@@ -635,9 +650,9 @@ internal sealed partial class SanityQueryBuilder
 
         if (expanded == SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + SanityConstants.CLOSE_BRACE) return; // Don't add an empty projection
 
-        if (expanded.StartsWith(SanityConstants.OPEN_BRACE) && expanded.EndsWith(SanityConstants.CLOSE_BRACE))
+        if (expanded.StartsWith(SanityConstants.OPEN_BRACE))
         {
-            if (FlattenProjection && !expanded.StartsWith(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR))
+            if (FlattenProjection && expanded.EndsWith(SanityConstants.CLOSE_BRACE) && !expanded.StartsWith(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR))
             {
                 sb.Append(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded.Substring(1));
                 return;
@@ -647,7 +662,9 @@ internal sealed partial class SanityQueryBuilder
             return;
         }
 
-        if (FlattenProjection)
+        if ((!string.IsNullOrEmpty(AggregateFunction) || !string.IsNullOrEmpty(AggregatePostFix)) && !expanded.Contains(SanityConstants.CHAR_COMMA))
+            sb.Append(SanityConstants.DOT).Append(expanded);
+        else if (FlattenProjection)
             sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded + SanityConstants.CLOSE_BRACE);
         else
             sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + expanded + SanityConstants.CLOSE_BRACE);
@@ -830,10 +847,12 @@ internal sealed partial class SanityQueryBuilder
 
     private void WrapWithAggregate(StringBuilder sb)
     {
-        if (string.IsNullOrEmpty(AggregateFunction)) return;
+        if (!string.IsNullOrEmpty(AggregateFunction))
+        {
+            sb.Insert(0, AggregateFunction + SanityConstants.OPEN_PAREN);
+            sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
+        }
 
-        sb.Insert(0, AggregateFunction + SanityConstants.OPEN_PAREN);
-        sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
         if (!string.IsNullOrEmpty(AggregatePostFix)) sb.Append(AggregatePostFix);
     }
 

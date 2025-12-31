@@ -2,6 +2,14 @@
 
 public static class SanityQueryFormatter
 {
+    /// <summary>
+    /// Formats a given Sanity query string by applying proper indentation and formatting rules.
+    /// </summary>
+    /// <param name="query">The Sanity query string to format. Can be null, empty, or contain whitespace.</param>
+    /// <returns>
+    /// A formatted version of the query string with appropriate indentation.
+    /// If the input query is null, empty, or consists of whitespace, it returns the input as is.
+    /// </returns>
     public static string Format(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) return query;

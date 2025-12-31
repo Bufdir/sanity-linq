@@ -12,6 +12,7 @@ internal sealed partial class SanityQueryBuilder
     public string AggregatePostFix { get; set; } = "";
 
     public List<string> Constraints { get; } = [];
+    public List<string> PostFilters { get; } = [];
 
     public Type? DocType { get; set; }
 
@@ -258,11 +259,21 @@ internal sealed partial class SanityQueryBuilder
             AppendProjection(sb, projection);
         }
 
+        AppendPostFilters(sb);
         AppendOrderings(sb);
         AppendSlices(sb);
         WrapWithAggregate(sb);
 
         return sb.ToString();
+    }
+
+    private void AppendPostFilters(StringBuilder sb)
+    {
+        if (PostFilters.Count <= 0) return;
+
+        sb.Append(SanityConstants.OPEN_BRACKET);
+        sb.Append(PostFilters.Distinct().Aggregate((c, n) => $"({c}) {SanityConstants.AND} ({n})"));
+        sb.Append(SanityConstants.CLOSE_BRACKET);
     }
 
     private static void EnsurePath(JObject root, IReadOnlyList<string> parts, out List<JObject> parents)

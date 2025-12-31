@@ -116,14 +116,19 @@ internal class SanityMethodCallTranslator(
         var simplifiedExpression = Evaluator.PartialEval(arg);
         if (simplifiedExpression is not LambdaExpression lambda) return transformOperand(e.Arguments[0]);
 
+        var filter = transformOperand(lambda.Body);
+
         if (isTopLevel && !queryBuilder.IsSilent)
         {
-            queryBuilder.Constraints.Add(transformOperand(lambda.Body));
+            if (!string.IsNullOrEmpty(queryBuilder.Projection))
+                queryBuilder.PostFilters.Add(filter);
+            else
+                queryBuilder.Constraints.Add(filter);
+
             return transformOperand(e.Arguments[0]);
         }
 
         var operand = transformOperand(e.Arguments[0]);
-        var filter = transformOperand(lambda.Body);
         return $"{operand}[{filter}]";
     }
 

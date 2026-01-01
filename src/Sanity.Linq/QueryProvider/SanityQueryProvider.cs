@@ -112,12 +112,12 @@ internal sealed class SanityQueryProvider(Type docType, SanityDataContext contex
         return ExecuteWithCallback<TResult>(expression);
     }
 
-    public TResult ExecuteWithCallback<TResult>(Expression expression, ContentCallback? callback = null)
+    public TResult ExecuteWithCallback<TResult>(Expression expression, ClientCallback? callback = null)
     {
         return ExecuteWithCallbackAsync<TResult>(expression, callback).GetAwaiter().GetResult();
     }
 
-    public async Task<TResult> ExecuteWithCallbackAsync<TResult>(Expression expression, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+    public async Task<TResult> ExecuteWithCallbackAsync<TResult>(Expression expression, ClientCallback? callback = null, CancellationToken cancellationToken = default)
     {
         var query = GetSanityQuery<TResult>(expression);
 

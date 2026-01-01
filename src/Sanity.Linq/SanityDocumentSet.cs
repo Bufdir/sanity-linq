@@ -88,8 +88,8 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
                       [];
         return FilterResults(results);
     }
-    
-    public async Task<IEnumerable<TDoc>> ExecuteWithCallBackAsync(ContentCallback? callback = null, CancellationToken cancellationToken = default)
+
+    public async Task<IEnumerable<TDoc>> ExecuteWithCallBackAsync(ClientCallback? callback = null, CancellationToken cancellationToken = default)
     {
         var results = await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<IEnumerable<TDoc>>(Expression, callback, cancellationToken).ConfigureAwait(false) ??
                       [];

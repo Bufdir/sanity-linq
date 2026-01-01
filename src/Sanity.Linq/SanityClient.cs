@@ -78,7 +78,7 @@ public class SanityClient
     }
 
 
-    public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+    public virtual async Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ClientCallback? callback = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(query)) throw new ArgumentException("Query cannot be empty", nameof(query));
         var oQuery = new SanityQuery
@@ -93,7 +93,7 @@ public class SanityClient
         return await HandleHttpResponseAsync<SanityQueryResponse<TResult>>(response, callback).ConfigureAwait(false);
     }
 
-    public virtual async Task<SanityDocumentsResponse<TDoc>> GetDocumentAsync<TDoc>(string id, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+    public virtual async Task<SanityDocumentsResponse<TDoc>> GetDocumentAsync<TDoc>(string id, ClientCallback? callback = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(id)) throw new ArgumentException("Id cannot be empty", nameof(id));
         var response = await _httpQueryClient.GetAsync($"data/doc/{WebUtility.UrlEncode(_options.Dataset)}/{WebUtility.UrlEncode(id)}", cancellationToken).ConfigureAwait(false);
@@ -189,7 +189,7 @@ public class SanityClient
         return await HandleHttpResponseAsync<TResult>(response).ConfigureAwait(false);
     }
 
-    protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response, ContentCallback? callback = null)
+    protected virtual async Task<TResponse> HandleHttpResponseAsync<TResponse>(HttpResponseMessage response, ClientCallback? callback = null)
     {
         var content = await response.GetResponseContentAndDebugAsync(_options.Debug, _logger);
 
@@ -231,14 +231,16 @@ public class SanityClient
         return value.Length <= maxLength ? value : value[..maxLength];
     }
 
-    private static void HandleCallback(string content, ContentCallback? callback)
+    private static void HandleCallback(string content, ClientCallback? callback)
     {
         if (callback == null || string.IsNullOrEmpty(content)) return;
 
-        var result = SanityResponseProcessor.ExtractResult(content);
-        if (string.IsNullOrEmpty(result)) return;
-        callback(result);
+        var (query, result) = SanityResponseProcessor.ParseQueryAndResult(content);
+
+        callback(new ClientResult(query, result));
     }
 }
 
-public delegate void ContentCallback(string content);
+public delegate void ClientCallback(ClientResult result);
+
+public record ClientResult(string Query, string Content);

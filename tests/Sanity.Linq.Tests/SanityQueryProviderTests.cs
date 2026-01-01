@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,7 +20,7 @@ public class SanityQueryProviderTests
         var context = CreateContext();
 
         // Act
-        var provider = new SanityQueryProvider(typeof(MyDoc), context, maxNestingLevel: 4);
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 4);
 
         // Assert
         Assert.Equal(typeof(MyDoc), provider.DocType);
@@ -34,16 +33,16 @@ public class SanityQueryProviderTests
     {
         // Arrange
         var context = CreateContext();
-        var provider = new SanityQueryProvider(typeof(MyDoc), context, maxNestingLevel: 3);
-        var baseSet = new SanityDocumentSet<MyDoc>(context, maxNestingLevel: 3);
-        Expression expression = baseSet.Expression; // a valid IQueryable<T> expression
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 3);
+        var baseSet = new SanityDocumentSet<MyDoc>(context, 3);
+        var expression = baseSet.Expression; // a valid IQueryable<T> expression
 
         // Act
         var result = provider.CreateQuery<MyDoc>(expression);
 
         // Assert
         var ds = Assert.IsType<SanityDocumentSet<MyDoc>>(result);
-        Assert.Same(provider, ((SanityDocumentSet<MyDoc>)ds).Provider);
+        Assert.Same(provider, ds.Provider);
         Assert.Same(expression, ((SanityDocumentSet<MyDoc>)ds).Expression);
     }
 
@@ -52,9 +51,9 @@ public class SanityQueryProviderTests
     {
         // Arrange
         var context = CreateContext();
-        var provider = new SanityQueryProvider(typeof(MyDoc), context, maxNestingLevel: 3);
-        var baseSet = new SanityDocumentSet<MyDoc>(context, maxNestingLevel: 3);
-        Expression expression = baseSet.Expression;
+        var provider = new SanityQueryProvider(typeof(MyDoc), context, 3);
+        var baseSet = new SanityDocumentSet<MyDoc>(context, 3);
+        var expression = baseSet.Expression;
 
         // Act
         var queryable = provider.CreateQuery(expression);
@@ -72,7 +71,7 @@ public class SanityQueryProviderTests
     {
         // Arrange
         var context = CreateContext();
-        var set = new SanityDocumentSet<MyDoc>(context, maxNestingLevel: 2);
+        var set = new SanityDocumentSet<MyDoc>(context, 2);
         var queryable = set.Where(d => d.Title == "Hello");
         var provider = (SanityQueryProvider)queryable.Provider;
 
@@ -197,7 +196,7 @@ public class SanityQueryProviderTests
         public bool FetchAsyncCalled { get; private set; }
         public string? LastQuery { get; private set; }
 
-        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ClientCallback? callback = null, CancellationToken cancellationToken = default)
         {
             FetchAsyncCalled = true;
             LastQuery = query;

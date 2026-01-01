@@ -162,7 +162,7 @@ public class SanityDocumentSetExtensionsTests
         Assert.NotNull(result);
         Assert.Equal("First", result.Title);
         Assert.True(testClient.FetchAsyncCalled);
-        
+
         // Verify that the query sent to the client had [0]
         Assert.EndsWith("[0]", testClient.LastQuery.Trim());
     }
@@ -672,16 +672,16 @@ public class SanityDocumentSetExtensionsTests
         // Arrange
         var context = CreateContext();
         var set = new SanityDocumentSet<MyDoc>(context, 3);
-        
+
         // Count() is a terminal operation, but we want to see the query it would generate.
         // Actually, CountAsync calls provider.ExecuteAsync<int>(exp).
         // provider.ExecuteAsync calls GetSanityQuery<TResult>(expression).
-        
+
         // We can't easily call .Count() and get the query because it executes.
         // But we can manually use the provider to get the query for a Count expression.
         var countMethod = typeof(Queryable).GetMethods().First(m => m.Name == "Count" && m.GetParameters().Length == 1).MakeGenericMethod(typeof(MyDoc));
         var countExpression = Expression.Call(null, countMethod, set.Expression);
-        
+
         var provider = (SanityQueryProvider)set.Provider;
         var groq = provider.GetSanityQuery<int>(countExpression);
 
@@ -697,7 +697,7 @@ public class SanityDocumentSetExtensionsTests
         // Arrange
         var context = CreateContext();
         var set = new SanityDocumentSet<MyDoc>(context, 3);
-        
+
         // FirstOrDefault() is a terminal operation. 
         // We can simulate it by calling Take(1).
         var queryable = set.Where(d => d.Title != null).Take(1);
@@ -902,7 +902,7 @@ public class SanityDocumentSetExtensionsTests
         public bool UploadFileCalled { get; private set; }
         public string LastQuery { get; private set; } = string.Empty;
 
-        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ContentCallback? callback = null, CancellationToken cancellationToken = default)
+        public override Task<SanityQueryResponse<TResult>> FetchAsync<TResult>(string query, object? parameters = null, ClientCallback? callback = null, CancellationToken cancellationToken = default)
         {
             FetchAsyncCalled = true;
             LastQuery = query;

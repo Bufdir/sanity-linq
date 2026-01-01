@@ -114,8 +114,31 @@ public static class SanityDocumentSetExtensions
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
-        
-        public async Task<T[]> ToArrayWithCallBackAsync(ContentCallback? callback = null, CancellationToken cancellationToken = default)
+
+        /// <summary>
+        ///     Converts the elements of the source queryable into an array asynchronously, with an optional callback for
+        ///     processing the query execution result.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="callback">
+        ///     An optional callback delegate to process the query and its result.
+        /// </param>
+        /// <param name="cancellationToken">
+        ///     A token to monitor for cancellation requests.
+        /// </param>
+        /// <returns>
+        ///     A task representing the asynchronous operation, which, on completion, contains an array of elements of type
+        ///     <typeparamref name="T" />.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown when the <paramref name="source" /> is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown when the <paramref name="source" /> is not a <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
+        public async Task<T[]> ToArrayAsync(ClientCallback callback, CancellationToken cancellationToken = default)
         {
             return source switch
             {

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.QueryProvider;
 using Xunit;
 
 namespace Sanity.Linq.Tests;
@@ -155,6 +157,70 @@ public class SanityQueryBuilderTests
         // Should contain the reference field with dereferencing switch
         Assert.Contains("myRefs[][defined(@)]", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void AddProjection_ChainsProjections()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.AddProjection("field1");
+        builder.AddProjection("field2");
+        Assert.Equal((string)"field1.field2", (string)builder.Projection);
+
+        builder.Projection = string.Empty;
+        builder.AddProjection("{a}");
+        builder.AddProjection("{b}");
+        Assert.Equal((string)"{a} {b}", (string)builder.Projection);
+    }
+
+    [Fact]
+    public void AppendProjection_WithAggregate_UsesDotNotation()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.AggregateFunction = "count";
+        var sb = new StringBuilder();
+        
+        var t = builder.GetType();
+        var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        mi.Invoke(builder, [sb, "title"]);
+        
+        Assert.Equal((string)".title", (string)sb.ToString());
+    }
+
+    [Fact]
+    public void AppendProjection_Flattening_WrapsWithSpread()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.FlattenProjection = true;
+        var sb = new StringBuilder();
+        
+        var t = builder.GetType();
+        var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        mi.Invoke(builder, [sb, "title, author"]);
+        
+        Assert.Contains(" {...title, author}", sb.ToString());
+    }
+
+    [Fact]
+    public void GetPropertyProjectionList_IsCached()
+    {
+        var t = typeof(SanityQueryBuilder);
+        var mi = t.GetMethod("GetPropertyProjectionList", BindingFlags.Public | BindingFlags.Static)!;
+        
+        // Initial call
+        var first = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
+        
+        // Second call should come from cache (we can't easily prove it's from cache without reflection on the private field, 
+        // but we can at least ensure it returns the same content)
+        var second = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
+        
+        Assert.Equal(first.Count, second.Count);
+        Assert.Equal(first[0], second[0]);
+
+        // Reflection to check cache field
+        var cacheField = t.GetField("ProjectionCache", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var cache = (System.Collections.IDictionary)cacheField.GetValue(null)!;
+        Assert.True(cache.Count > 0);
     }
 
     private static string CallGetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel = 0, int maxNestingLevel = 2)

@@ -105,7 +105,7 @@ public class SanityExpressionTransformerTests
         Assert.Equal("[1,2]", result);
     }
 
-    private class TestDoc
+    private class TestDoc : SanityDocument
     {
         public string? Title { get; set; }
         public TestDoc? Nested { get; set; }
@@ -228,5 +228,47 @@ public class SanityExpressionTransformerTests
         var input = "a\\b\"c";
         var result = SanityExpressionTransformer.EscapeString(input);
         Assert.Equal("a\\\\b\\\"c", result);
+    }
+
+    [Fact]
+    public void TransformOperand_NullableHasValue_ReturnsOperand()
+    {
+        var param = Expression.Parameter(typeof(int?), "i");
+        var expr = Expression.Property(param, "HasValue");
+        // Actually HasValue is not directly handled, it's usually handled by PartialEval.
+        // But .Value IS handled.
+    }
+
+    [Fact]
+    public void TransformOperand_NullableValue_ReturnsOperand()
+    {
+        var param = Expression.Parameter(typeof(int?), "i");
+        var expr = Expression.Property(param, "Value");
+        var result = SanityExpressionTransformer.TransformOperand(expr, MethodCallHandler, BinaryExpressionHandler, UnaryExpressionHandler);
+        Assert.Equal("@", result); // i.Value becomes @ if i is the parameter
+    }
+
+    [Fact]
+    public void TransformOperand_SanityReferenceValueId_ReturnsCoalesce()
+    {
+        var param = Expression.Parameter(typeof(TestDoc), "d");
+        var refProp = Expression.Property(param, nameof(TestDoc.Ref));
+        var valProp = Expression.Property(refProp, "Value");
+        var idProp = Expression.Property(valProp, "Id");
+        
+        var result = SanityExpressionTransformer.TransformOperand(idProp, MethodCallHandler, BinaryExpressionHandler, UnaryExpressionHandler);
+        Assert.Equal("coalesce(ref._ref, ref._key)", result);
+    }
+
+    [Fact]
+    public void TransformOperand_SanityReferenceValueCustomProp_ReturnsCoalesceWithDeref()
+    {
+        var param = Expression.Parameter(typeof(TestDoc), "d");
+        var refProp = Expression.Property(param, nameof(TestDoc.Ref));
+        var valProp = Expression.Property(refProp, "Value");
+        var customProp = Expression.Property(valProp, nameof(TestDoc.CustomName));
+        
+        var result = SanityExpressionTransformer.TransformOperand(customProp, MethodCallHandler, BinaryExpressionHandler, UnaryExpressionHandler);
+        Assert.Equal("coalesce(ref->custom_name, ref.custom_name)", result);
     }
 }

@@ -124,6 +124,56 @@ public class SanityExpressionParserTests
         Assert.Contains("title", groq);
     }
 
+    [Fact]
+    public void GetSanityQuery_With_Complex_Where_Chains_Returns_Expected_Groq()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        
+        var queryable = set.Where(d => d.Title == "A" || (d.Title != null && d.Title.StartsWith("B")))
+            .OrderByDescending(d => d.Title)
+            .Take(10)
+            .Skip(5);
+        
+        var provider = (SanityQueryProvider)queryable.Provider;
+        var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
+        
+        Assert.Contains("_type == \"myDoc\"", groq);
+        Assert.Contains("title == \"A\" || (defined(title) && title != null) && title match \"B*\"", groq);
+        Assert.Contains("| order(title desc)", groq);
+        Assert.Contains("[5..14]", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Binary_Null_Check_Returns_Defined_Or_Null()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        
+        var queryable = set.Where(d => d.Title == null);
+        var provider = (SanityQueryProvider)queryable.Provider;
+        var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
+        
+        // Expected: (!(defined(title)) || title == null)
+        Assert.Contains("!(defined(title))", groq);
+        Assert.Contains("title == null", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Binary_Not_Null_Check_Returns_Defined_And_Not_Null()
+    {
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+        
+        var queryable = set.Where(d => d.Title != null);
+        var provider = (SanityQueryProvider)queryable.Provider;
+        var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
+        
+        // Expected: (defined(title) && title != null)
+        Assert.Contains("defined(title)", groq);
+        Assert.Contains("title != null", groq);
+    }
+
     private sealed class IncludeDoc : SanityDocument
     {
         public List<SanityReference<IncludeDoc>>? Refs { get; set; }

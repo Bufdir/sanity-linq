@@ -120,10 +120,14 @@ internal sealed partial class SanityQueryBuilder
     {
         var isEnumerable = TryGetEnumerableElementType(propertyType, out var enumerableType);
         var targetType = isEnumerable ? enumerableType! : propertyType;
-        var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
+
         var indicator = isEnumerable && !fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? SanityConstants.ARRAY_INDICATOR : string.Empty;
         var filter = isEnumerable && !fieldRef.Contains(SanityConstants.DEFINED) ? SanityConstants.ARRAY_FILTER : string.Empty;
         var suffix = indicator + filter;
+
+        if (IsSimpleType(targetType)) return $"{fieldRef}{suffix}";
+
+        var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
 
         if (fields.Count <= 0)
         {
@@ -424,7 +428,7 @@ internal sealed partial class SanityQueryBuilder
     {
         if (key == part) return true;
 
-        // Simplify key: untokenize it and remove spaces
+        // Simplify key: un-tokenize it and remove spaces
         var k = Untokenize(key).Replace(SanityConstants.SPACE, string.Empty);
 
         // Simplify part: remove spaces
@@ -577,6 +581,19 @@ internal sealed partial class SanityQueryBuilder
         return false;
     }
 
+    private static bool IsSimpleType(Type type)
+    {
+        var actualType = Nullable.GetUnderlyingType(type) ?? type;
+        return actualType.IsPrimitive ||
+               actualType.IsEnum ||
+               actualType == typeof(string) ||
+               actualType == typeof(decimal) ||
+               actualType == typeof(DateTime) ||
+               actualType == typeof(DateTimeOffset) ||
+               actualType == typeof(TimeSpan) ||
+               actualType == typeof(Guid);
+    }
+
     private void AddDocTypeConstraintIfAny()
     {
         if (DocType == null || DocType == typeof(object) || DocType == typeof(SanityDocument)) return;
@@ -621,7 +638,7 @@ internal sealed partial class SanityQueryBuilder
     {
         if (Orderings.Count == 0) return;
 
-        sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.PIPE).Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.ORDER).Append(SanityConstants.OPEN_PAREN);
+        sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.CHAR_PIPE).Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.ORDER).Append(SanityConstants.CHAR_OPEN_PAREN);
         var first = true;
         foreach (var ordering in Orderings)
         {
@@ -663,7 +680,7 @@ internal sealed partial class SanityQueryBuilder
         }
 
         if ((!string.IsNullOrEmpty(AggregateFunction) || !string.IsNullOrEmpty(AggregatePostFix)) && !expanded.Contains(SanityConstants.CHAR_COMMA))
-            sb.Append(SanityConstants.DOT).Append(expanded);
+            sb.Append(SanityConstants.CHAR_DOT).Append(expanded);
         else if (FlattenProjection)
             sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded + SanityConstants.CLOSE_BRACE);
         else

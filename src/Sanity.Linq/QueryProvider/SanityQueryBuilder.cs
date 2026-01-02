@@ -702,15 +702,38 @@ internal sealed partial class SanityQueryBuilder
         // The reason for converting to JSON is simply to be able to work with the query in a hierarchical structure.
         // This could also be done creating some sort of query tree object, which might be a more appropriate / cleaner solution.
 
-        var jsonProjection = GroqToJson(SanityConstants.OPEN_BRACE + projection + SanityConstants.CLOSE_BRACE);
-        if (JsonConvert.DeserializeObject(jsonProjection) is not JObject jObjectProjection)
+        var normalizedProjection = projection.Trim();
+        var toConvert = normalizedProjection.StartsWith(SanityConstants.OPEN_BRACE) && normalizedProjection.EndsWith(SanityConstants.CLOSE_BRACE)
+            ? normalizedProjection
+            : SanityConstants.OPEN_BRACE + normalizedProjection + SanityConstants.CLOSE_BRACE;
+
+        var jsonProjection = GroqToJson(toConvert);
+        JObject jObjectProjection;
+        try
+        {
+            if (JsonConvert.DeserializeObject(jsonProjection) is not JObject obj)
+                return projection;
+            jObjectProjection = obj;
+        }
+        catch (Exception)
+        {
             return projection;
+        }
 
         // Use the includes provided via parameter, not the instance field
         foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key))
         {
             var jsonInclude = GroqToJson(SanityConstants.OPEN_BRACE + includeValue + SanityConstants.CLOSE_BRACE);
-            if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude) continue;
+            JObject jObjectInclude;
+            try
+            {
+                if (JsonConvert.DeserializeObject(jsonInclude) is not JObject objInclude) continue;
+                jObjectInclude = objInclude;
+            }
+            catch (Exception)
+            {
+                continue;
+            }
 
             var pathParts = ParseIncludePath(includeKey);
 

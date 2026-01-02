@@ -54,7 +54,7 @@ internal static class SanityExpressionTransformer
                     sb.Append(SanityConstants.NULL);
                     break;
                 case string s:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(s)).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(EscapeString(s)).Append(SanityConstants.CHAR_STRING_DELIMITER);
                     break;
                 case bool b:
                     sb.Append(b ? SanityConstants.TRUE : SanityConstants.FALSE);
@@ -63,7 +63,7 @@ internal static class SanityExpressionTransformer
                     sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", item);
                     break;
                 default:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(EscapeString(item.ToString() ?? string.Empty)).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(EscapeString(item.ToString() ?? string.Empty)).Append(SanityConstants.CHAR_STRING_DELIMITER);
                     break;
             }
         }
@@ -176,7 +176,7 @@ internal static class SanityExpressionTransformer
             if (transformedArg == propName)
                 sb.Append(transformedArg);
             else
-                sb.Append(SanityConstants.STRING_DELIMITER).Append(propName).Append(SanityConstants.STRING_DELIMITER)
+                sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(propName).Append(SanityConstants.CHAR_STRING_DELIMITER)
                     .Append(SanityConstants.CHAR_COLON).Append(SanityConstants.CHAR_SPACE).Append(transformedArg);
         }
 

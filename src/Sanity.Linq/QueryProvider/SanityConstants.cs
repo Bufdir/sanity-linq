@@ -42,7 +42,7 @@ internal static class SanityConstants
     public const char CHAR_BANG = '!';
     public const char CHAR_BACKSLASH = '\\';
     public const char CHAR_NEWLINE = '\n';
-
+    public const char CHAR_STRING_DELIMITER = '"';
     public const string EQUALS = "==";
     public const string NOT_EQUALS = "!=";
     public const string AND = "&&";

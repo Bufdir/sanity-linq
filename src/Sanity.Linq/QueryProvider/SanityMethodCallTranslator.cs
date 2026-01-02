@@ -144,7 +144,48 @@ internal class SanityMethodCallTranslator(
         if (lambda!.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
 
-        if (!isTopLevel || queryBuilder.IsSilent) return transformOperand(e.Arguments[0]);
+        if (!isTopLevel || queryBuilder.IsSilent)
+        {
+            var wasFallback = queryBuilder.UseCoalesceFallback;
+            queryBuilder.UseCoalesceFallback = false;
+            try
+            {
+                var operand = transformOperand(e.Arguments[0]);
+                var selector = transformOperand(lambda.Body);
+
+                if (selector == SanityConstants.AT) return operand;
+
+                if (selector.StartsWith(SanityConstants.AT))
+                {
+                    selector = selector.Substring(SanityConstants.AT.Length);
+                }
+
+                string result;
+                if (selector.StartsWith(SanityConstants.DEREFERENCING_OPERATOR))
+                {
+                    result = $"{operand}{selector}";
+                }
+                else if (operand == SanityConstants.AT)
+                {
+                    result = selector;
+                }
+                else
+                {
+                    result = $"{operand}.{selector}";
+                }
+
+                if (e.Method.Name == "SelectMany" && !result.EndsWith(SanityConstants.ARRAY_INDICATOR))
+                {
+                    result += SanityConstants.ARRAY_INDICATOR;
+                }
+
+                return result;
+            }
+            finally
+            {
+                queryBuilder.UseCoalesceFallback = wasFallback;
+            }
+        }
 
         var projection = transformOperand(lambda.Body);
         if (lambda.Body is NewExpression)

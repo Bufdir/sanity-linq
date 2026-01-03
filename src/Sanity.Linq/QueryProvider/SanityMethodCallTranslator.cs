@@ -11,8 +11,6 @@ internal class SanityMethodCallTranslator(
     Func<Expression, Expression?> visit,
     bool isTopLevel = false)
 {
-    private static string CountGreaterThanZeroPostFix => $"{SanityConstants.SPACE}{SanityConstants.GREATER_THAN}{SanityConstants.SPACE}0";
-
     private string TransformMethodCallExpression(MethodCallExpression e)
     {
         switch (e.Method.Name)
@@ -25,7 +23,7 @@ internal class SanityMethodCallTranslator(
 
             case "GetValue`1":
             case "GetValue":
-                return HandleGetValue(e);
+                return SanityMethodCallTranslatorHelper.HandleGetValue(e);
 
             case "Where":
                 return HandleWhere(e);
@@ -117,7 +115,7 @@ internal class SanityMethodCallTranslator(
     {
         VisitSourceIfTopLevel(e);
 
-        if (!TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
+        if (!SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
 
         var filter = transformOperand(lambda!.Body);
 
@@ -139,7 +137,7 @@ internal class SanityMethodCallTranslator(
     {
         VisitSourceIfTopLevel(e);
 
-        if (!TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
+        if (!SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda)) return transformOperand(e.Arguments[0]);
 
         if (lambda!.Body is MemberExpression m && (m.Type.IsPrimitive || m.Type == typeof(string)))
             throw new Exception($"Selecting '{m.Member.Name}' as a scalar value is not supported due to serialization limitations. Instead, create an anonymous object containing the '{m.Member.Name}' field. e.g. o => new {{ o.{m.Member.Name} }}.");
@@ -155,29 +153,17 @@ internal class SanityMethodCallTranslator(
 
                 if (selector == SanityConstants.AT) return operand;
 
-                if (selector.StartsWith(SanityConstants.AT))
-                {
-                    selector = selector.Substring(SanityConstants.AT.Length);
-                }
+                if (selector.StartsWith(SanityConstants.AT)) selector = selector.Substring(SanityConstants.AT.Length);
 
                 string result;
                 if (selector.StartsWith(SanityConstants.DEREFERENCING_OPERATOR))
-                {
                     result = $"{operand}{selector}";
-                }
                 else if (operand == SanityConstants.AT)
-                {
                     result = selector;
-                }
                 else
-                {
                     result = $"{operand}.{selector}";
-                }
 
-                if (e.Method.Name == "SelectMany" && !result.EndsWith(SanityConstants.ARRAY_INDICATOR))
-                {
-                    result += SanityConstants.ARRAY_INDICATOR;
-                }
+                if (e.Method.Name == "SelectMany" && !result.EndsWith(SanityConstants.ARRAY_INDICATOR)) result += SanityConstants.ARRAY_INDICATOR;
 
                 return result;
             }
@@ -202,9 +188,9 @@ internal class SanityMethodCallTranslator(
     private string HandleInclude(MethodCallExpression e)
     {
         VisitSourceIfTopLevel(e);
-        if (!TryGetLambda(e, 1, out var lambda)) throw new Exception("Include method second argument must be a lambda expression.");
+        if (!SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda)) throw new Exception("Include method second argument must be a lambda expression.");
 
-        var (body, selectors) = ExtractSelectors(lambda!.Body);
+        var (body, selectors) = SanityMethodCallTranslatorHelper.ExtractSelectors(lambda!.Body);
 
         var wasSilent = queryBuilder.IsSilent;
         var wasFallback = queryBuilder.UseCoalesceFallback;
@@ -213,7 +199,7 @@ internal class SanityMethodCallTranslator(
         try
         {
             var fieldPath = transformOperand(body).TrimStart('@').TrimStart('.');
-            var sourceName = GetIncludeSourceName(e, fieldPath);
+            var sourceName = SanityMethodCallTranslatorHelper.GetIncludeSourceName(e, fieldPath);
             var includePath = AddInclude(fieldPath, body.Type, sourceName);
 
             selectors.Reverse();
@@ -287,21 +273,6 @@ internal class SanityMethodCallTranslator(
     }
 
 
-    private static (Expression body, List<Expression> selectors) ExtractSelectors(Expression body)
-    {
-        var selectors = new List<Expression>();
-        while (body is MethodCallExpression { Method.Name: "Select" or "SelectMany" or "OfType" } m)
-        {
-            if (m.Arguments.Count >= 2)
-                selectors.Add(m.Arguments[1]);
-            else if (m.Method.Name == "OfType") selectors.Add(m);
-
-            body = m.Arguments[0];
-        }
-
-        return (body, selectors);
-    }
-
     private string AddInclude(string fieldPath, Type propertyType, string? sourceName)
     {
         if (queryBuilder.Includes.ContainsKey(fieldPath)) return fieldPath;
@@ -313,12 +284,6 @@ internal class SanityMethodCallTranslator(
         return fieldPath;
     }
 
-    private static string GetIncludeSourceName(MethodCallExpression e, string targetName)
-    {
-        if (e.Arguments is [_, _, ConstantExpression { Value: string s }, ..]) return s;
-
-        return targetName.Split('.').Last();
-    }
 
     private string HandleOfType(MethodCallExpression e)
     {
@@ -336,19 +301,10 @@ internal class SanityMethodCallTranslator(
         return $"{operand}{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
     }
 
-    private static string HandleGetValue(MethodCallExpression e)
-    {
-        if (e.Arguments.Count <= 0) throw new Exception("Could not evaluate GetValue method");
-
-        if (e.Arguments[1] is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
-
-        var fieldName = c.Value?.ToString() ?? string.Empty;
-        return $"{fieldName}";
-    }
 
     private string HandleContains(MethodCallExpression e)
     {
-        if (!TryGetContainsParts(e, out var collectionExpr, out var valueExpr) || collectionExpr == null || valueExpr == null)
+        if (!SanityMethodCallTranslatorHelper.TryGetContainsParts(e, out var collectionExpr, out var valueExpr) || collectionExpr == null || valueExpr == null)
             return HandleContainsLegacy(e);
 
         if (HandleEnumerableContains(collectionExpr, valueExpr) is { } enumerableResult) return enumerableResult;
@@ -367,11 +323,11 @@ internal class SanityMethodCallTranslator(
 
     private string? HandleEnumerableContains(Expression collectionExpr, Expression valueExpr)
     {
-        var eval = TryEvaluate(collectionExpr);
+        var eval = SanityMethodCallTranslatorHelper.TryEvaluate(collectionExpr);
         if (eval is not (IEnumerable ie and not string)) return null;
 
         var memberName = transformOperand(valueExpr);
-        var values = JoinValues(ie);
+        var values = SanityMethodCallTranslatorHelper.JoinValues(ie);
         if (values == SanityConstants.OPEN_BRACKET + SanityConstants.CLOSE_BRACKET) return SanityConstants.FALSE;
 
         // If the memberName is @->id or something similar, it means we are checking a reference's ID
@@ -408,66 +364,6 @@ internal class SanityMethodCallTranslator(
         return null;
     }
 
-    private static object? TryEvaluate(Expression expr)
-    {
-        return expr is ConstantExpression c ? c.Value : null;
-    }
-
-    private static bool TryGetContainsParts(MethodCallExpression call, out Expression? coll, out Expression? val)
-    {
-        if (call is { Object: not null, Arguments.Count: 1 })
-        {
-            coll = call.Object;
-            val = call.Arguments[0];
-            return true;
-        }
-
-        if (call.Object == null && call.Arguments.Count == 2)
-        {
-            coll = call.Arguments[0];
-            val = call.Arguments[1];
-            return true;
-        }
-
-        coll = null;
-        val = null;
-        return false;
-    }
-
-    private static string JoinValues(IEnumerable values)
-    {
-        var sb = new StringBuilder();
-        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
-        var first = true;
-        foreach (var v in values)
-        {
-            if (v == null) continue;
-            if (!first) sb.Append(SanityConstants.CHAR_COMMA);
-            first = false;
-
-            switch (v)
-            {
-                case string s:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(s)).Append(SanityConstants.STRING_DELIMITER);
-                    break;
-                case Guid g:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(g).Append(SanityConstants.STRING_DELIMITER);
-                    break;
-                case bool b:
-                    sb.Append(b ? SanityConstants.TRUE : SanityConstants.FALSE);
-                    break;
-                case int or long or double or float or decimal:
-                    sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", v);
-                    break;
-                default:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? string.Empty)).Append(SanityConstants.STRING_DELIMITER);
-                    break;
-            }
-        }
-
-        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
-        return sb.ToString();
-    }
 
     private string HandleContainsLegacy(MethodCallExpression e)
     {
@@ -503,7 +399,7 @@ internal class SanityMethodCallTranslator(
 
             if (!queryBuilder.IsSilent)
             {
-                if (TryGetLambda(e, 1, out var lambda))
+                if (SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda))
                     queryBuilder.AddProjection(transformOperand(lambda!.Body));
 
                 queryBuilder.AggregateFunction = string.Empty;
@@ -513,7 +409,7 @@ internal class SanityMethodCallTranslator(
         }
 
         var source = transformOperand(e.Arguments[0]);
-        var selector = TryGetLambda(e, 1, out var l) ? transformOperand(l!.Body) : SanityConstants.AT;
+        var selector = SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var l) ? transformOperand(l!.Body) : SanityConstants.AT;
 
         return selector == SanityConstants.AT
             ? $"({source}){orderPipe}"
@@ -534,11 +430,11 @@ internal class SanityMethodCallTranslator(
             if (!queryBuilder.IsSilent)
             {
                 queryBuilder.AggregateFunction = SanityConstants.COUNT;
-                queryBuilder.AggregatePostFix = CountGreaterThanZeroPostFix;
+                queryBuilder.AggregatePostFix = SanityMethodCallTranslatorHelper.CountGreaterThanZeroPostFix;
             }
         }
 
-        if (TryGetLambda(e, 1, out var lambda))
+        if (SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda))
         {
             if (TryHandleAnyConstantCollection(e, lambda!, out var constantResult))
                 return constantResult;
@@ -576,7 +472,7 @@ internal class SanityMethodCallTranslator(
             {
                 var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
                 var targetOperand = transformOperand(target);
-                var values = JoinValues(collection);
+                var values = SanityMethodCallTranslatorHelper.JoinValues(collection);
                 result = $"{targetOperand} {SanityConstants.IN} {values}";
                 return true;
             }
@@ -585,9 +481,9 @@ internal class SanityMethodCallTranslator(
         return false;
     }
 
-    private static string WrapWithCountGreaterThanZero(string operand)
+    private string WrapWithCountGreaterThanZero(string operand)
     {
-        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.CLOSE_PAREN}{CountGreaterThanZeroPostFix}";
+        return SanityMethodCallTranslatorHelper.WrapWithCountGreaterThanZero(operand);
     }
 
     private string HandleIsDefined(MethodCallExpression e)
@@ -607,7 +503,7 @@ internal class SanityMethodCallTranslator(
     {
         VisitSourceIfTopLevel(e);
 
-        if (!TryGetLambda(e, 1, out var lambda)) return string.Empty;
+        if (!SanityMethodCallTranslatorHelper.TryGetLambda(e, 1, out var lambda)) return string.Empty;
 
         if (isTopLevel && !queryBuilder.IsSilent)
         {
@@ -661,23 +557,5 @@ internal class SanityMethodCallTranslator(
     private void VisitSourceIfTopLevel(MethodCallExpression e)
     {
         if (isTopLevel && e.Arguments.Count > 0 && e.Arguments[0] is not ConstantExpression) visit(e.Arguments[0]);
-    }
-
-    private static bool TryGetLambda(MethodCallExpression e, int index, out LambdaExpression? lambda)
-    {
-        lambda = null;
-        if (e.Arguments.Count <= index) return false;
-
-        var arg = e.Arguments[index];
-        while (arg is UnaryExpression { NodeType: ExpressionType.Quote or ExpressionType.Convert } unary)
-            arg = unary.Operand;
-
-        if (arg is LambdaExpression l)
-        {
-            lambda = l;
-            return true;
-        }
-
-        return false;
     }
 }

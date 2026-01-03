@@ -513,7 +513,7 @@ internal static partial class SanityQueryBuilderHelper
         return JsonToGroq(jsonProjection);
     }
 
-    private static string GroqToJson(string groq)
+    public static string GroqToJson(string groq)
     {
         if (string.IsNullOrEmpty(groq)) return groq;
 
@@ -605,7 +605,7 @@ internal static partial class SanityQueryBuilderHelper
         return json;
     }
 
-    private static string JsonToGroq(string json)
+    public static string JsonToGroq(string json)
     {
         if (string.IsNullOrEmpty(json)) return json;
 

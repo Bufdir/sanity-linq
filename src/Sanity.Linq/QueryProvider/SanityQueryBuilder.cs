@@ -38,6 +38,11 @@ internal sealed class SanityQueryBuilder
         return SanityQueryBuilderHelper.GetJoinProjection(sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, isExplicit);
     }
 
+    public static List<string> GetPropertyProjectionList(Type type, int nestingLevel, int maxNestingLevel)
+    {
+        return SanityQueryBuilderHelper.GetPropertyProjectionList(type, nestingLevel, maxNestingLevel);
+    }
+
     /// <summary>
     ///     Constructs a query string based on the current state of the query builder.
     /// </summary>

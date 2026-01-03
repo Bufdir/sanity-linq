@@ -49,6 +49,7 @@ public class SanityQueryBuilderTests
     {
         var builder = CreateBuilder();
         var t = builder.GetType();
+        var helperType = typeof(SanityQueryBuilderHelper);
 
         // Set a simple projection where include will expand
         t.GetProperty("Projection")!.SetValue(builder, "author");
@@ -62,8 +63,8 @@ public class SanityQueryBuilderTests
             { "author", CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>)) }
         };
 
-        // Invoke private ExpandIncludesInProjection via reflection
-        var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Static)!;
+        // Invoke private ExpandIncludesInProjection via reflection from Helper
+        var mi = helperType.GetMethod("ExpandIncludesInProjection", BindingFlags.Public | BindingFlags.Static)!;
         var expanded = (string)mi.Invoke(null, new object[] { "author", paramIncludes })!;
         
         Assert.Contains("author", expanded);
@@ -73,15 +74,15 @@ public class SanityQueryBuilderTests
     [Fact]
     public void GroqToJson_ShouldPreserveSpacesInStrings()
     {
-        var t = GetBuilderType();
-        var mi = t.GetMethod("GroqToJson", BindingFlags.NonPublic | BindingFlags.Static);
+        var helperType = typeof(SanityQueryBuilderHelper);
+        var mi = helperType.GetMethod("GroqToJson", BindingFlags.Public | BindingFlags.Static);
         Assert.NotNull(mi);
 
         // This simulates a projection that might contain a string with a space
         var groq = "title == \"John Doe\"";
         var json = (string)mi.Invoke(null, new object[] { groq })!;
 
-        var miJsonToGroq = t.GetMethod("JsonToGroq", BindingFlags.NonPublic | BindingFlags.Static);
+        var miJsonToGroq = helperType.GetMethod("JsonToGroq", BindingFlags.Public | BindingFlags.Static);
         Assert.NotNull(miJsonToGroq);
         var finalGroq = (string)miJsonToGroq.Invoke(null, new object[] { json })!;
 
@@ -217,10 +218,30 @@ public class SanityQueryBuilderTests
         Assert.Equal(first.Count, second.Count);
         Assert.Equal(first[0], second[0]);
 
-        // Reflection to check cache field
-        var cacheField = t.GetField("ProjectionCache", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var cache = (System.Collections.IDictionary)cacheField.GetValue(null)!;
-        Assert.True(cache.Count > 0);
+        // Reflection to check cache
+        var cacheInstance = ProjectionCache.Instance;
+        var cacheField = typeof(ProjectionCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var cacheDict = (System.Collections.ICollection)cacheField.GetValue(cacheInstance)!;
+        Assert.True(cacheDict.Count > 0);
+    }
+
+    [Fact]
+    public void DocTypeCache_IsCached()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.DocType = typeof(AssetDoc);
+        
+        var t = builder.GetType();
+        var mi = t.GetMethod("AddDocTypeConstraintIfAny", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        
+        // Initial call
+        mi.Invoke(builder, null);
+        
+        // Reflection to check cache
+        var cacheInstance = DocTypeCache.Instance;
+        var cacheField = typeof(DocTypeCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var cacheDict = (System.Collections.ICollection)cacheField.GetValue(cacheInstance)!;
+        Assert.True(cacheDict.Count > 0);
     }
 
     private static string CallGetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel = 0, int maxNestingLevel = 2)

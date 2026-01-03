@@ -119,7 +119,7 @@ public static class SanityQueryFormatter
             if (afterSpread >= query.Length || query[afterSpread] != SanityConstants.CHAR_CLOSE_BRACE) return false;
 
             NormalizeSpace();
-            _sb.Append(SanityConstants.OPEN_BRACE).Append(SanityConstants.SPREAD_OPERATOR).Append(SanityConstants.CLOSE_BRACE);
+            _sb.Append(SanityConstants.CHAR_OPEN_BRACE).Append(SanityConstants.SPREAD_OPERATOR).Append(SanityConstants.CHAR_CLOSE_BRACE);
             _currentIndex = afterSpread;
             return true;
         }

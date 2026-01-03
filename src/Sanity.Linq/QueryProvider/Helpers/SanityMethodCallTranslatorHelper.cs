@@ -78,10 +78,10 @@ internal static class SanityMethodCallTranslatorHelper
             switch (v)
             {
                 case string s:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(s)).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(s)).Append(SanityConstants.CHAR_STRING_DELIMITER);
                     break;
                 case Guid g:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(g).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(g).Append(SanityConstants.CHAR_STRING_DELIMITER);
                     break;
                 case bool b:
                     sb.Append(b ? SanityConstants.TRUE : SanityConstants.FALSE);
@@ -90,7 +90,7 @@ internal static class SanityMethodCallTranslatorHelper
                     sb.AppendFormat(CultureInfo.InvariantCulture, "{0}", v);
                     break;
                 default:
-                    sb.Append(SanityConstants.STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? string.Empty)).Append(SanityConstants.STRING_DELIMITER);
+                    sb.Append(SanityConstants.CHAR_STRING_DELIMITER).Append(SanityExpressionTransformer.EscapeString(v.ToString() ?? string.Empty)).Append(SanityConstants.CHAR_STRING_DELIMITER);
                     break;
             }
         }

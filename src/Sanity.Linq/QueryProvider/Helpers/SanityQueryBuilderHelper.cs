@@ -180,7 +180,7 @@ internal static partial class SanityQueryBuilderHelper
         return true;
     }
 
-    public static void EnsurePath(JObject root, IReadOnlyList<string> parts, out List<JObject> parents)
+    private static void EnsurePath(JObject root, IReadOnlyList<string> parts, out List<JObject> parents)
     {
         var tokens = SanityGroqTokenRegistry.Instance.Tokens;
         var currentObjects = new List<JObject> { root };
@@ -215,7 +215,7 @@ internal static partial class SanityQueryBuilderHelper
         parents = currentObjects;
     }
 
-    public static List<JObject> FindAllChildObjects(JObject current, string part)
+    private static List<JObject> FindAllChildObjects(JObject current, string part)
     {
         var tokens = SanityGroqTokenRegistry.Instance.Tokens;
         var matches = new List<JObject>();
@@ -244,7 +244,7 @@ internal static partial class SanityQueryBuilderHelper
         return matches;
     }
 
-    public static bool HasSanityImageAsset(PropertyInfo[] props, out PropertyInfo? assetProp)
+    private static bool HasSanityImageAsset(PropertyInfo[] props, out PropertyInfo? assetProp)
     {
         assetProp = props.FirstOrDefault(p => p.PropertyType.IsGenericType
                                               && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
@@ -252,7 +252,7 @@ internal static partial class SanityQueryBuilderHelper
         return assetProp != null;
     }
 
-    public static bool IsListOfSanityImages(Type t, out Type? elementType)
+    private static bool IsListOfSanityImages(Type t, out Type? elementType)
     {
         elementType = null;
         var type = t.GetInterfaces().FirstOrDefault(i => i.IsGenericType
@@ -266,7 +266,7 @@ internal static partial class SanityQueryBuilderHelper
         return true;
     }
 
-    public static bool IsListOfSanityReference(Type t, out Type? element)
+    private static bool IsListOfSanityReference(Type t, out Type? element)
     {
         element = null;
         if (!TryGetEnumerableElementType(t, out var et) || et is not { IsGenericType: true } || et.GetGenericTypeDefinition() != typeof(SanityReference<>)) return false;
@@ -275,7 +275,7 @@ internal static partial class SanityQueryBuilderHelper
         return true;
     }
 
-    public static bool IsSanityReferenceType(Type t)
+    private static bool IsSanityReferenceType(Type t)
     {
         return t.IsGenericType && t.GetGenericTypeDefinition() == typeof(SanityReference<>);
     }
@@ -285,7 +285,7 @@ internal static partial class SanityQueryBuilderHelper
         return string.Join(SanityConstants.COMMA, parts);
     }
 
-    public static bool KeyMatchesPart(string key, string part)
+    private static bool KeyMatchesPart(string key, string part)
     {
         if (key == part) return true;
 
@@ -305,7 +305,7 @@ internal static partial class SanityQueryBuilderHelper
         return kBase == pBase && !string.IsNullOrEmpty(kBase);
     }
 
-    public static string[] ParseIncludePath(string includeKey)
+    private static string[] ParseIncludePath(string includeKey)
     {
         return includeKey
             .Replace(SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DOT)
@@ -313,7 +313,7 @@ internal static partial class SanityQueryBuilderHelper
             .Split(SanityConstants.CHAR_DOT, StringSplitOptions.RemoveEmptyEntries);
     }
 
-    public static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject)
+    private static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject)
     {
         var tokens = SanityGroqTokenRegistry.Instance.Tokens;
         var targets = GetMergeTargets(parent, tokens);
@@ -323,7 +323,7 @@ internal static partial class SanityQueryBuilderHelper
                 PerformMergeOrUpdate(targetObj, part, newKey, newValue);
     }
 
-    public static List<JObject> GetMergeTargets(JObject parent, IReadOnlyDictionary<string, string> tokens)
+    private static List<JObject> GetMergeTargets(JObject parent, IReadOnlyDictionary<string, string> tokens)
     {
         var targets = new List<JObject> { parent };
 
@@ -338,7 +338,7 @@ internal static partial class SanityQueryBuilderHelper
         return targets;
     }
 
-    public static bool TryFindProperty(JObject obj, string part, [NotNullWhen(true)] out string? key, [NotNullWhen(true)] out JToken? value)
+    private static bool TryFindProperty(JObject obj, string part, [NotNullWhen(true)] out string? key, [NotNullWhen(true)] out JToken? value)
     {
         foreach (var property in obj)
             if (KeyMatchesPart(property.Key, part))
@@ -353,7 +353,7 @@ internal static partial class SanityQueryBuilderHelper
         return false;
     }
 
-    public static void PerformMergeOrUpdate(JObject targetObj, string part, string newKey, JToken newValue)
+    private static void PerformMergeOrUpdate(JObject targetObj, string part, string newKey, JToken newValue)
     {
         if (TryFindProperty(targetObj, part, out var existingKey, out var existingValue))
         {
@@ -385,7 +385,7 @@ internal static partial class SanityQueryBuilderHelper
         }
     }
 
-    public static string Untokenize(string key)
+    private static string Untokenize(string key)
     {
         if (string.IsNullOrEmpty(key)) return key;
         var reverseTokens = SanityGroqTokenRegistry.Instance.ReverseTokens;
@@ -425,7 +425,7 @@ internal static partial class SanityQueryBuilderHelper
         return sb.ToString();
     }
 
-    public static bool TryGetEnumerableElementType(Type t, out Type? elementType)
+    private static bool TryGetEnumerableElementType(Type t, out Type? elementType)
     {
         var type = t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>)
             ? t
@@ -441,7 +441,7 @@ internal static partial class SanityQueryBuilderHelper
         return false;
     }
 
-    public static bool IsSimpleType(Type type)
+    private static bool IsSimpleType(Type type)
     {
         var actualType = Nullable.GetUnderlyingType(type) ?? type;
         return actualType.IsPrimitive ||
@@ -513,7 +513,7 @@ internal static partial class SanityQueryBuilderHelper
         return JsonToGroq(jsonProjection);
     }
 
-    public static string GroqToJson(string groq)
+    private static string GroqToJson(string groq)
     {
         if (string.IsNullOrEmpty(groq)) return groq;
 
@@ -605,7 +605,7 @@ internal static partial class SanityQueryBuilderHelper
         return json;
     }
 
-    public static string JsonToGroq(string json)
+    private static string JsonToGroq(string json)
     {
         if (string.IsNullOrEmpty(json)) return json;
 

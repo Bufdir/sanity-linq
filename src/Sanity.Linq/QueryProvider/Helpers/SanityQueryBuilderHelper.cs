@@ -193,10 +193,9 @@ internal static class SanityQueryBuilderHelper
         // Only complex classes (non-string) need further processing
         if (!prop.PropertyType.IsClass || prop.PropertyType == typeof(string)) return false;
 
-        // Only skip auto-expansion for GENERIC Sanity references as they involve dereferencing to another type,
+        // Skip auto-expansion for Sanity references (generic or non-generic) as they involve dereferencing,
         // which should be controlled by [Include] or explicit .Include().
-        // DocumentReference (non-generic) is safe to auto-expand as it only contains basic reference fields.
-        if (prop.PropertyType.IsGenericType && (prop.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>) || IsListOfSanityReference(prop.PropertyType, out _)))
+        if (IsSanityReferenceType(prop.PropertyType) || IsListOfSanityReference(prop.PropertyType, out _))
             return false;
 
         return true;

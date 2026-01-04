@@ -83,6 +83,19 @@ public static class SanityDocumentSetExtensions
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
+        
+        
+        public async Task<List<T>> ToListAsync(ClientCallback callback, CancellationToken cancellationToken = default)
+        {
+            return source switch
+            {
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteWithCallBackAsync(callback, cancellationToken).ConfigureAwait(false)).ToList(),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
+        }
+        
+        
 
         /// <summary>
         ///     Asynchronously converts the elements of the source queryable to an array.

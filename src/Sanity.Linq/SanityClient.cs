@@ -27,6 +27,8 @@ using Sanity.Linq.QueryProvider;
 
 namespace Sanity.Linq;
 
+public delegate void ClientCallback(ClientResult result);
+
 public class SanityClient
 {
     private readonly IHttpClientFactory? _factory;
@@ -98,36 +100,6 @@ public class SanityClient
         if (string.IsNullOrEmpty(id)) throw new ArgumentException("Id cannot be empty", nameof(id));
         var response = await _httpQueryClient.GetAsync($"data/doc/{WebUtility.UrlEncode(_options.Dataset)}/{WebUtility.UrlEncode(id)}", cancellationToken).ConfigureAwait(false);
         return await HandleHttpResponseAsync<SanityDocumentsResponse<TDoc>>(response, callback).ConfigureAwait(false);
-    }
-
-    private void Initialize()
-    {
-        // Initialize serialization settings
-
-        // Initialize query client
-        _httpQueryClient = _factory?.CreateClient() ?? new HttpClient();
-        _httpQueryClient.DefaultRequestHeaders.Accept.Clear();
-        _httpQueryClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        _httpQueryClient.BaseAddress = _options.UseCdn switch
-        {
-            true => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.apicdn.sanity.io/{_options.ApiVersion}/"),
-            _ => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/")
-        };
-        if (!string.IsNullOrEmpty(_options.Token)) _httpQueryClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
-
-        // Initialize the client for non-query requests (i.e., requests that never use CDN)
-        if (!_options.UseCdn)
-        {
-            _httpClient = _httpQueryClient;
-        }
-        else
-        {
-            _httpClient = _factory?.CreateClient() ?? new HttpClient();
-            _httpClient.DefaultRequestHeaders.Accept.Clear();
-            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            _httpClient.BaseAddress = new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/");
-            if (!string.IsNullOrEmpty(_options.Token)) _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
-        }
     }
 
     public virtual async Task<SanityDocumentResponse<SanityFileAsset>> UploadFileAsync(FileInfo file, string? label = null, CancellationToken cancellationToken = default)
@@ -225,12 +197,6 @@ public class SanityClient
         }
     }
 
-    private static string Truncate(string? value, int maxLength)
-    {
-        if (value == null) return string.Empty;
-        return value.Length <= maxLength ? value : value[..maxLength];
-    }
-
     private static void HandleCallback(string content, ClientCallback? callback)
     {
         if (callback == null || string.IsNullOrEmpty(content)) return;
@@ -239,8 +205,42 @@ public class SanityClient
 
         callback(new ClientResult(query, result));
     }
-}
 
-public delegate void ClientCallback(ClientResult result);
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (value == null) return string.Empty;
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private void Initialize()
+    {
+        // Initialize serialization settings
+
+        // Initialize query client
+        _httpQueryClient = _factory?.CreateClient() ?? new HttpClient();
+        _httpQueryClient.DefaultRequestHeaders.Accept.Clear();
+        _httpQueryClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        _httpQueryClient.BaseAddress = _options.UseCdn switch
+        {
+            true => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.apicdn.sanity.io/{_options.ApiVersion}/"),
+            _ => new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/")
+        };
+        if (!string.IsNullOrEmpty(_options.Token)) _httpQueryClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
+
+        // Initialize the client for non-query requests (i.e., requests that never use CDN)
+        if (!_options.UseCdn)
+        {
+            _httpClient = _httpQueryClient;
+        }
+        else
+        {
+            _httpClient = _factory?.CreateClient() ?? new HttpClient();
+            _httpClient.DefaultRequestHeaders.Accept.Clear();
+            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _httpClient.BaseAddress = new Uri($"https://{WebUtility.UrlEncode(_options.ProjectId)}.api.sanity.io/{_options.ApiVersion}/");
+            if (!string.IsNullOrEmpty(_options.Token)) _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
+        }
+    }
+}
 
 public record ClientResult(string Query, string Content);

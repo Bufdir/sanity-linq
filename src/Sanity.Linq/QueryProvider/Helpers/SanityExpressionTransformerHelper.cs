@@ -5,6 +5,30 @@ namespace Sanity.Linq.QueryProvider;
 
 internal static class SanityExpressionTransformerHelper
 {
+    /// <summary>
+    ///     Formats an enumerable collection into a string representation suitable for use in Sanity queries.
+    /// </summary>
+    /// <param name="enumerable">The enumerable collection to format. Can be <c>null</c>.</param>
+    /// <param name="type">The type of the enumerable collection.</param>
+    /// <param name="transformOperand">
+    ///     A function to transform an <see cref="Expression" /> into a string representation,
+    ///     using handlers for method calls, binary expressions, unary expressions, and a coalesce fallback option.
+    /// </param>
+    /// <param name="methodCallHandler">A function to handle formatting of <see cref="MethodCallExpression" /> instances.</param>
+    /// <param name="binaryExpressionHandler">A function to handle formatting of <see cref="BinaryExpression" /> instances.</param>
+    /// <param name="unaryExpressionHandler">A function to handle formatting of <see cref="UnaryExpression" /> instances.</param>
+    /// <param name="useCoalesceFallback">
+    ///     A boolean value indicating whether to use a coalesce fallback when transforming operands.
+    /// </param>
+    /// <returns>
+    ///     A string representation of the enumerable collection. If the enumerable is <c>null</c>,
+    ///     the method returns a constant representing <c>null</c>. If the enumerable is of type
+    ///     <see cref="SanityDocumentSet{TDoc}" />, it returns a constant representing a placeholder.
+    /// </returns>
+    /// <remarks>
+    ///     The method handles various types of items within the enumerable, including strings,
+    ///     booleans, numeric types, and other objects. Special characters are escaped as needed.
+    /// </remarks>
     internal static string FormatEnumerable(IEnumerable? enumerable, Type type, Func<Expression, Func<MethodCallExpression, string>, Func<BinaryExpression, string>, Func<UnaryExpression, string>, bool, string> transformOperand, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
         if (enumerable == null) return SanityConstants.NULL;
@@ -43,19 +67,32 @@ internal static class SanityExpressionTransformerHelper
         return sb.ToString();
     }
 
-    internal static bool IsNumericOrBoolType(Type type)
-    {
-        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
-        return underlyingType == typeof(int) ||
-               underlyingType == typeof(long) ||
-               underlyingType == typeof(double) ||
-               underlyingType == typeof(float) ||
-               underlyingType == typeof(short) ||
-               underlyingType == typeof(byte) ||
-               underlyingType == typeof(decimal) ||
-               underlyingType == typeof(bool);
-    }
-
+    /// <summary>
+    ///     Handles the transformation of a <see cref="MemberExpression" /> into its corresponding string representation
+    ///     within the context of a Sanity query.
+    /// </summary>
+    /// <param name="m">The <see cref="MemberExpression" /> to be transformed.</param>
+    /// <param name="transformOperand">
+    ///     A function to recursively transform operands, taking an <see cref="Expression" /> and handlers for
+    ///     <see cref="MethodCallExpression" />, <see cref="BinaryExpression" />, and <see cref="UnaryExpression" />,
+    ///     as well as a flag indicating whether to use a coalesce fallback.
+    /// </param>
+    /// <param name="methodCallHandler">A function to handle <see cref="MethodCallExpression" /> transformations.</param>
+    /// <param name="binaryExpressionHandler">A function to handle <see cref="BinaryExpression" /> transformations.</param>
+    /// <param name="unaryExpressionHandler">A function to handle <see cref="UnaryExpression" /> transformations.</param>
+    /// <param name="useCoalesceFallback">
+    ///     A boolean flag indicating whether to apply a coalesce fallback for certain expressions.
+    /// </param>
+    /// <returns>
+    ///     A string representation of the transformed <see cref="MemberExpression" /> suitable for use in a Sanity query.
+    /// </returns>
+    /// <remarks>
+    ///     This method includes optimizations for handling nullable types and specific patterns involving
+    ///     <c>SanityReference&lt;T&gt;</c>. It ensures that the resulting string adheres to the expected query format.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown if any of the required parameters are null.
+    /// </exception>
     internal static string HandleMemberExpression(MemberExpression m, Func<Expression, Func<MethodCallExpression, string>, Func<BinaryExpression, string>, Func<UnaryExpression, string>, bool, string> transformOperand, Func<MethodCallExpression, string> methodCallHandler, Func<BinaryExpression, string> binaryExpressionHandler, Func<UnaryExpression, string> unaryExpressionHandler, bool useCoalesceFallback)
     {
         var member = m.Member;
@@ -66,29 +103,28 @@ internal static class SanityExpressionTransformerHelper
             m.Expression != null)
             return transformOperand(m.Expression, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
-        // Optimization: if we have SanityReference<T>.Value.Id, we can use coalesce(_ref, _key)
-        if (useCoalesceFallback && member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM &&
-            innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        switch (useCoalesceFallback)
         {
-            var refPath = transformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
-            return refPath == SanityConstants.AT ? $"{SanityConstants.COALESCE}({SanityConstants.REF}, {SanityConstants.KEY})" : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DOT}{SanityConstants.REF}, {refPath}{SanityConstants.DOT}{SanityConstants.KEY})";
-        }
+            // Optimization: if we have SanityReference<T>.Value.Id, we can use coalesce(_ref, _key)
+            case true when member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM && innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>):
+            {
+                var refPath = transformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
+                return refPath == SanityConstants.AT ? $"{SanityConstants.COALESCE}({SanityConstants.REF}, {SanityConstants.KEY})" : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DOT}{SanityConstants.REF}, {refPath}{SanityConstants.DOT}{SanityConstants.KEY})";
+            }
+            // General fallback for denormalized properties on SanityReference.Value
+            case true when m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM2 && innerM2.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>):
+            {
+                var propName = member.GetJsonProperty();
+                var refPath = transformOperand(innerM2.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
-        // General fallback for denormalized properties on SanityReference.Value
-        if (useCoalesceFallback && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM2 &&
-            innerM2.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
-        {
-            var propName = member.GetJsonProperty();
-            var refPath = transformOperand(innerM2.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
-
-            return refPath == SanityConstants.AT
-                ? $"{SanityConstants.COALESCE}({SanityConstants.AT}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {propName})"
-                : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {refPath}{SanityConstants.DOT}{propName})";
+                return refPath == SanityConstants.AT
+                    ? $"{SanityConstants.COALESCE}({SanityConstants.AT}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {propName})"
+                    : $"{SanityConstants.COALESCE}({refPath}{SanityConstants.DEREFERENCING_OPERATOR}{propName}, {refPath}{SanityConstants.DOT}{propName})";
+            }
         }
 
         string current;
-        if (member is { Name: "Value", DeclaringType.IsGenericType: true } &&
-            member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        if (member is { Name: "Value", DeclaringType.IsGenericType: true } && member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
             current = m.Expression is ParameterExpression ? SanityConstants.AT + SanityConstants.DEREFERENCING_OPERATOR : SanityConstants.DEREFERENCING_OPERATOR;
         else
             current = member.GetJsonProperty();

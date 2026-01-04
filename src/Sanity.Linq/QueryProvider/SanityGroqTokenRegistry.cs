@@ -37,7 +37,7 @@ internal sealed class SanityGroqTokenRegistry
         ReverseTokens = new ReadOnlyDictionary<string, string>(tokens.ToDictionary(kvp => kvp.Value, kvp => kvp.Key));
     }
 
-    public IReadOnlyDictionary<string, string> Tokens { get; }
-    public IReadOnlyList<string> SortedTokenKeys { get; }
     public IReadOnlyDictionary<string, string> ReverseTokens { get; }
+    public IReadOnlyList<string> SortedTokenKeys { get; }
+    public IReadOnlyDictionary<string, string> Tokens { get; }
 }

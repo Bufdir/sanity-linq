@@ -30,38 +30,11 @@ internal static class SanityMethodCallTranslatorHelper
 
     internal static string HandleGetValue(MethodCallExpression e)
     {
-        if (e.Arguments.Count <= 0) throw new Exception("Could not evaluate GetValue method");
-
-        if (e.Arguments[1] is not ConstantExpression c || c.Type != typeof(string)) throw new Exception("Could not evaluate GetValue method");
+        if (e.Arguments.Count <= 0 || e.Arguments[1] is not ConstantExpression c || c.Type != typeof(string))
+            throw new Exception("Could not evaluate GetValue method");
 
         var fieldName = c.Value?.ToString() ?? string.Empty;
         return $"{fieldName}";
-    }
-
-    internal static object? TryEvaluate(Expression expr)
-    {
-        return expr is ConstantExpression c ? c.Value : null;
-    }
-
-    internal static bool TryGetContainsParts(MethodCallExpression call, out Expression? coll, out Expression? val)
-    {
-        if (call is { Object: not null, Arguments.Count: 1 })
-        {
-            coll = call.Object;
-            val = call.Arguments[0];
-            return true;
-        }
-
-        if (call.Object == null && call.Arguments.Count == 2)
-        {
-            coll = call.Arguments[0];
-            val = call.Arguments[1];
-            return true;
-        }
-
-        coll = null;
-        val = null;
-        return false;
     }
 
     internal static string JoinValues(IEnumerable values)
@@ -99,9 +72,30 @@ internal static class SanityMethodCallTranslatorHelper
         return sb.ToString();
     }
 
-    internal static string WrapWithCountGreaterThanZero(string operand)
+    internal static object? TryEvaluate(Expression expr)
     {
-        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.CLOSE_PAREN}{CountGreaterThanZeroPostFix}";
+        return expr is ConstantExpression c ? c.Value : null;
+    }
+
+    internal static bool TryGetContainsParts(MethodCallExpression call, out Expression? coll, out Expression? val)
+    {
+        if (call is { Object: not null, Arguments.Count: 1 })
+        {
+            coll = call.Object;
+            val = call.Arguments[0];
+            return true;
+        }
+
+        if (call.Object == null && call.Arguments.Count == 2)
+        {
+            coll = call.Arguments[0];
+            val = call.Arguments[1];
+            return true;
+        }
+
+        coll = null;
+        val = null;
+        return false;
     }
 
     internal static bool TryGetLambda(MethodCallExpression e, int index, out LambdaExpression? lambda)
@@ -120,5 +114,10 @@ internal static class SanityMethodCallTranslatorHelper
         }
 
         return false;
+    }
+
+    internal static string WrapWithCountGreaterThanZero(string operand)
+    {
+        return $"{SanityConstants.COUNT}{SanityConstants.OPEN_PAREN}{operand}{SanityConstants.CLOSE_PAREN}{CountGreaterThanZeroPostFix}";
     }
 }

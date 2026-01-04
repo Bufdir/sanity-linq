@@ -49,16 +49,32 @@ internal static class TypeSystem
         return null;
     }
 
-    public static bool IsSimpleType(this Type type)
+    extension(Type type)
     {
-        var actualType = Nullable.GetUnderlyingType(type) ?? type;
-        return actualType.IsPrimitive ||
-               actualType.IsEnum ||
-               actualType == typeof(string) ||
-               actualType == typeof(decimal) ||
-               actualType == typeof(DateTime) ||
-               actualType == typeof(DateTimeOffset) ||
-               actualType == typeof(TimeSpan) ||
-               actualType == typeof(Guid);
+        public bool IsSimpleType()
+        {
+            var actualType = Nullable.GetUnderlyingType(type) ?? type;
+            return actualType.IsPrimitive ||
+                   actualType.IsEnum ||
+                   actualType == typeof(string) ||
+                   actualType == typeof(decimal) ||
+                   actualType == typeof(DateTime) ||
+                   actualType == typeof(DateTimeOffset) ||
+                   actualType == typeof(TimeSpan) ||
+                   actualType == typeof(Guid);
+        }
+
+        public bool IsNumericOrBoolType()
+        {
+            var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+            return underlyingType == typeof(int) ||
+                   underlyingType == typeof(long) ||
+                   underlyingType == typeof(double) ||
+                   underlyingType == typeof(float) ||
+                   underlyingType == typeof(short) ||
+                   underlyingType == typeof(byte) ||
+                   underlyingType == typeof(decimal) ||
+                   underlyingType == typeof(bool);
+        }
     }
 }

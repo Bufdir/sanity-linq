@@ -58,14 +58,6 @@ public class SanityReferenceTypeConverter : JsonConverter
         return res;
     }
 
-    private static bool IsDereferenced(JObject obj)
-    {
-        return obj.Properties().Any(p =>
-            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id"
-            && p.Name != SanityConstants.DEREFERENCING_SWITCH && p.Name != SanityConstants.DEREFERENCING_OPERATOR
-            && !p.Name.EndsWith("->"));
-    }
-
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
     {
         if (value != null)
@@ -104,5 +96,13 @@ public class SanityReferenceTypeConverter : JsonConverter
         }
 
         serializer.Serialize(writer, null);
+    }
+
+    private static bool IsDereferenced(JObject obj)
+    {
+        return obj.Properties().Any(p =>
+            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id"
+            && p.Name != SanityConstants.DEREFERENCING_SWITCH && p.Name != SanityConstants.DEREFERENCING_OPERATOR
+            && !p.Name.EndsWith("->"));
     }
 }

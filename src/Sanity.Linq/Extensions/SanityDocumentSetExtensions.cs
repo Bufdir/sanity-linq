@@ -83,8 +83,31 @@ public static class SanityDocumentSetExtensions
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
-        
-        
+
+
+        /// <summary>
+        ///     Asynchronously converts the queryable source to a <see cref="List{T}" /> while invoking a specified callback during
+        ///     execution.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of elements in the source.
+        /// </typeparam>
+        /// <param name="callback">
+        ///     A <see cref="ClientCallback" /> to be invoked with the query result during execution.
+        /// </param>
+        /// <param name="cancellationToken">
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
+        /// </param>
+        /// <returns>
+        ///     A task that represents the asynchronous operation. The task result contains a <see cref="List{T}" /> of the query
+        ///     results.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown if the source is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown if the source is not of type <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
         public async Task<List<T>> ToListAsync(ClientCallback callback, CancellationToken cancellationToken = default)
         {
             return source switch
@@ -94,8 +117,7 @@ public static class SanityDocumentSetExtensions
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
-        
-        
+
 
         /// <summary>
         ///     Asynchronously converts the elements of the source queryable to an array.
@@ -129,15 +151,11 @@ public static class SanityDocumentSetExtensions
         }
 
         /// <summary>
-        ///     Converts the elements of the source queryable into an array asynchronously, with an optional callback for
-        ///     processing the query execution result.
+        ///     Converts the elements of the source queryable into an array asynchronously.
         /// </summary>
         /// <typeparam name="T">
         ///     The type of the elements in the source queryable.
         /// </typeparam>
-        /// <param name="callback">
-        ///     An optional callback delegate to process the query and its result.
-        /// </param>
         /// <param name="cancellationToken">
         ///     A token to monitor for cancellation requests.
         /// </param>

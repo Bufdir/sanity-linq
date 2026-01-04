@@ -11,27 +11,19 @@ internal sealed class SanityQueryBuilder
     public string AggregatePostFix { get; set; } = string.Empty;
 
     public List<string> Constraints { get; } = [];
-    public List<string> PostFilters { get; } = [];
-
     public Type? DocType { get; set; }
-
+    public bool ExpectsArray { get; set; }
+    public bool FlattenProjection { get; set; }
     public Dictionary<string, string> Includes { get; set; } = new();
-
+    public bool IsSilent { get; set; }
     public List<string> Orderings { get; set; } = [];
-
+    public List<string> PostFilters { get; } = [];
     public string Projection { get; set; } = string.Empty;
 
     public Type? ResultType { get; set; }
-
-    public bool ExpectsArray { get; set; }
-    public bool FlattenProjection { get; set; }
-    public bool IsSilent { get; set; }
-
-    public bool UseCoalesceFallback { get; set; } = true;
-
     public int Skip { get; set; }
-
     public int? Take { get; set; }
+    public bool UseCoalesceFallback { get; set; } = true;
 
     public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit = false)
     {
@@ -41,6 +33,39 @@ internal sealed class SanityQueryBuilder
     public static List<string> GetPropertyProjectionList(Type type, int nestingLevel, int maxNestingLevel)
     {
         return SanityQueryBuilderHelper.GetPropertyProjectionList(type, nestingLevel, maxNestingLevel);
+    }
+
+    public void AddConstraint(string constraint)
+    {
+        if (string.IsNullOrWhiteSpace(constraint)) return;
+        if (!Constraints.Contains(constraint)) Constraints.Add(constraint);
+    }
+
+    public void AddOrdering(string ordering)
+    {
+        if (string.IsNullOrWhiteSpace(ordering)) return;
+        if (!Orderings.Contains(ordering)) Orderings.Add(ordering);
+    }
+
+    public void AddPostFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return;
+        if (!PostFilters.Contains(filter)) PostFilters.Add(filter);
+    }
+
+    public void AddProjection(string projection)
+    {
+        if (string.IsNullOrWhiteSpace(projection)) return;
+        if (string.IsNullOrEmpty(Projection))
+        {
+            Projection = projection;
+            return;
+        }
+
+        if (projection.StartsWith(SanityConstants.OPEN_BRACE))
+            Projection = $"{Projection}{SanityConstants.SPACE}{projection}";
+        else
+            Projection = $"{Projection}{SanityConstants.DOT}{projection}";
     }
 
     /// <summary>
@@ -81,50 +106,6 @@ internal sealed class SanityQueryBuilder
 
         return sb.ToString();
     }
-
-    private void AppendPostFilters(StringBuilder sb)
-    {
-        if (PostFilters.Count <= 0) return;
-
-        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
-        var first = true;
-        foreach (var filter in PostFilters)
-        {
-            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
-            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(filter).Append(SanityConstants.CHAR_CLOSE_PAREN);
-            first = false;
-        }
-
-        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
-    }
-
-    public void AddProjection(string projection)
-    {
-        if (string.IsNullOrWhiteSpace(projection)) return;
-        if (string.IsNullOrEmpty(Projection))
-        {
-            Projection = projection;
-            return;
-        }
-
-        if (projection.StartsWith(SanityConstants.OPEN_BRACE))
-            Projection = $"{Projection}{SanityConstants.SPACE}{projection}";
-        else
-            Projection = $"{Projection}{SanityConstants.DOT}{projection}";
-    }
-
-    public void AddConstraint(string constraint)
-    {
-        if (string.IsNullOrWhiteSpace(constraint)) return;
-        if (!Constraints.Contains(constraint)) Constraints.Add(constraint);
-    }
-
-    public void AddPostFilter(string filter)
-    {
-        if (string.IsNullOrWhiteSpace(filter)) return;
-        if (!PostFilters.Contains(filter)) PostFilters.Add(filter);
-    }
-
 
     private void AddDocTypeConstraintIfAny()
     {
@@ -182,10 +163,20 @@ internal sealed class SanityQueryBuilder
         sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
     }
 
-    public void AddOrdering(string ordering)
+    private void AppendPostFilters(StringBuilder sb)
     {
-        if (string.IsNullOrWhiteSpace(ordering)) return;
-        if (!Orderings.Contains(ordering)) Orderings.Add(ordering);
+        if (PostFilters.Count <= 0) return;
+
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
+        var first = true;
+        foreach (var filter in PostFilters)
+        {
+            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(filter).Append(SanityConstants.CHAR_CLOSE_PAREN);
+            first = false;
+        }
+
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
     private void AppendProjection(StringBuilder sb, string projection)

@@ -340,158 +340,201 @@ internal static class SanityQueryBuilderHelper
     {
         if (includes == null || includes.Count == 0) return projection;
 
-        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
-        var normalizedProjection = projection.Trim();
-        var toConvert = normalizedProjection.StartsWith(SanityConstants.OPEN_BRACE) && normalizedProjection.EndsWith(SanityConstants.CLOSE_BRACE)
-            ? normalizedProjection
-            : SanityConstants.OPEN_BRACE + normalizedProjection + SanityConstants.CLOSE_BRACE;
-
-        var jsonProjection = GroqJsonHelper.GroqToJson(toConvert);
-        JObject jObjectProjection;
-        try
-        {
-            if (JsonConvert.DeserializeObject(jsonProjection) is not JObject obj)
-                return projection;
-            jObjectProjection = obj;
-        }
-        catch (Exception)
-        {
-            return projection;
-        }
+        var jObjectProjection = TryDeserializeProjection(projection);
+        if (jObjectProjection == null) return projection;
 
         // Apply includes one by one
         foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key.Length).ThenBy(k => k.Key))
         {
-            var pathParts = ParseIncludePath(includeKey);
-            EnsurePath(jObjectProjection, pathParts, out var parents);
+            ApplySingleInclude(jObjectProjection, includeKey, includeValue);
+        }
 
-            var lastPart = pathParts[^1];
-            var jsonInclude = GroqJsonHelper.GroqToJson(SanityConstants.OPEN_BRACE + includeValue + SanityConstants.CLOSE_BRACE);
-            if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude) continue;
+        return GroqJsonHelper.JsonToGroq(jObjectProjection.ToString(Formatting.None));
+    }
 
-            foreach (var parent in parents)
-            foreach (var incProp in jObjectInclude.Properties())
+    private static JObject? TryDeserializeProjection(string groq)
+    {
+        var normalized = groq.Trim();
+        var toConvert = normalized.StartsWith(SanityConstants.OPEN_BRACE) && normalized.EndsWith(SanityConstants.CLOSE_BRACE)
+            ? normalized
+            : SanityConstants.OPEN_BRACE + normalized + SanityConstants.CLOSE_BRACE;
+
+        var json = GroqJsonHelper.GroqToJson(toConvert);
+        try
+        {
+            return JsonConvert.DeserializeObject(json) as JObject;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ApplySingleInclude(JObject root, string includeKey, string includeValue)
+    {
+        var pathParts = ParseIncludePath(includeKey);
+        EnsurePath(root, pathParts, out var parents);
+
+        var lastPart = pathParts[^1];
+        var jObjectInclude = TryDeserializeProjection(includeValue);
+        if (jObjectInclude == null) return;
+
+        foreach (var parent in parents)
+        {
+            MergeIncludeProperties(parent, jObjectInclude, lastPart);
+        }
+    }
+
+    private static void MergeIncludeProperties(JObject parent, JObject jObjectInclude, string lastPart)
+    {
+        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
+
+        foreach (var incProp in jObjectInclude.Properties())
+        {
+            var incKey = incProp.Name;
+            var incValue = incProp.Value;
+
+            var untokenizedIncKey = GroqJsonHelper.Untokenize(incKey);
+            var openBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+            var closeBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET);
+            var isFiltered = openBrkt >= 0 && closeBrkt > openBrkt + 1;
+            var baseName = isFiltered ? untokenizedIncKey.Substring(0, openBrkt) : untokenizedIncKey;
+
+            var (existingKey, existingObj) = FindOrCreateTargetObject(parent, baseName, isFiltered, lastPart, incKey, incValue, tokens);
+
+            if (existingObj != null)
             {
-                var incKey = incProp.Name;
-                var incValue = incProp.Value;
-
-                var untokenizedIncKey = GroqJsonHelper.Untokenize(incKey);
-                var openBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
-                var closeBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET);
-                var isFiltered = openBrkt >= 0 && closeBrkt > openBrkt + 1;
-                var baseName = isFiltered ? untokenizedIncKey.Substring(0, openBrkt) : untokenizedIncKey;
-
-                // 1. Find or create existing base object
-                string? existingKey = null;
-                JObject? existingObj = null;
-                foreach (var prop in parent.Properties())
-                    if (KeyMatchesPart(prop.Name, baseName))
-                    {
-                        existingKey = prop.Name;
-                        if (prop.Value is JObject obj) existingObj = obj;
-                        break;
-                    }
-
-                if (existingObj == null)
+                if (isFiltered)
                 {
-                    // No existing property, add new or create base
-                    if (isFiltered || lastPart.Contains(SanityConstants.OPEN_BRACKET))
-                    {
-                        existingKey = baseName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
-                        existingObj = new JObject { [tokens[SanityConstants.SPREAD_OPERATOR]] = true };
-                        parent[existingKey] = existingObj;
-                    }
-                    else
-                    {
-                        parent[incKey] = incValue;
-                        existingKey = incKey;
-                        if (incValue is JObject obj2) existingObj = obj2;
-                    }
+                    MergeFilteredProperty(existingObj, untokenizedIncKey, openBrkt, closeBrkt, baseName, incValue);
                 }
-
-                // 2. Merge properties from include into existing object
-                if (existingObj != null)
+                else
                 {
-                    if (isFiltered)
-                    {
-                        var filter = untokenizedIncKey.Substring(openBrkt + 1, closeBrkt - openBrkt - 1);
-                        var normalizedFilter = filter.Replace(SanityConstants.STRING_DELIMITER, SanityConstants.SINGLE_QUOTE).Replace(" ", "");
-                        var condKey = normalizedFilter + SanityConstants.ARROW;
-
-                        // Unwrap incValue if it's aliased or a deref switch
-                        if (incValue is JObject incValueObj)
-                        {
-                            // Handle alias
-                            foreach (var p in incValueObj.Properties())
-                                if (KeyMatchesPart(p.Name, baseName))
-                                {
-                                    incValue = p.Value;
-                                    break;
-                                }
-
-                            // Handle deref switch unwrap
-                            if (incValue is JObject incValueObjUnwrapped)
-                                foreach (var p in incValueObjUnwrapped.Properties())
-                                {
-                                    var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
-                                    if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
-                                    {
-                                        incValue = p.Value;
-                                        break;
-                                    }
-                                }
-                        }
-
-                        // Find target conditional expansion (handle @-> suffix)
-                        string? targetCondKey = null;
-                        foreach (var p in existingObj.Properties())
-                        {
-                            var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
-                            if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
-                            {
-                                targetCondKey = p.Name;
-                                break;
-                            }
-                        }
-
-                        if (targetCondKey != null && existingObj[targetCondKey] is JObject existingCondObj && incValue is JObject incValueObj2)
-                            existingCondObj.Merge(incValueObj2, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
-                        else
-                            existingObj[condKey] = incValue;
-                    }
+                    if (incValue is JObject incValueObj)
+                        existingObj.Merge(incValueObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
                     else
-                    {
-                        // Not filtered, merge directly
-                        if (incValue is JObject incValueObj)
-                            existingObj.Merge(incValueObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
-                        else
-                            existingObj[incKey] = incValue;
-                    }
+                        existingObj[incKey] = incValue;
                 }
+            }
 
-                // 3. Ensure key is base name (with [] if it was filtered)
-                if (existingKey != null)
+            if (existingKey != null)
+            {
+                EnsureBaseFieldKey(parent, existingKey);
+            }
+        }
+    }
+
+    private static (string? existingKey, JObject? existingObj) FindOrCreateTargetObject(JObject parent, string baseName, bool isFiltered, string lastPart, string incKey, JToken incValue, IReadOnlyDictionary<string, string> tokens)
+    {
+        string? existingKey = null;
+        JObject? existingObj = null;
+
+        foreach (var prop in parent.Properties())
+        {
+            if (KeyMatchesPart(prop.Name, baseName))
+            {
+                existingKey = prop.Name;
+                if (prop.Value is JObject obj) existingObj = obj;
+                break;
+            }
+        }
+
+        if (existingObj == null)
+        {
+            if (isFiltered || lastPart.Contains(SanityConstants.OPEN_BRACKET))
+            {
+                existingKey = baseName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
+                existingObj = new JObject { [tokens[SanityConstants.SPREAD_OPERATOR]] = true };
+                parent[existingKey] = existingObj;
+            }
+            else
+            {
+                parent[incKey] = incValue;
+                existingKey = incKey;
+                if (incValue is JObject obj2) existingObj = obj2;
+            }
+        }
+
+        return (existingKey, existingObj);
+    }
+
+    private static void MergeFilteredProperty(JObject existingObj, string untokenizedIncKey, int openBrkt, int closeBrkt, string baseName, JToken incValue)
+    {
+        var filter = untokenizedIncKey.Substring(openBrkt + 1, closeBrkt - openBrkt - 1);
+        var normalizedFilter = filter.Replace(SanityConstants.STRING_DELIMITER, SanityConstants.SINGLE_QUOTE).Replace(" ", "");
+        var condKey = normalizedFilter + SanityConstants.ARROW;
+
+        var unwrappedIncValue = UnwrapIncludeValue(incValue, baseName, condKey);
+
+        string? targetCondKey = null;
+        foreach (var p in existingObj.Properties())
+        {
+            var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
+            if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
+            {
+                targetCondKey = p.Name;
+                break;
+            }
+        }
+
+        if (targetCondKey != null && existingObj[targetCondKey] is JObject existingCondObj && unwrappedIncValue is JObject incValueObj2)
+        {
+            existingCondObj.Merge(incValueObj2, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
+        }
+        else
+        {
+            existingObj[condKey] = unwrappedIncValue;
+        }
+    }
+
+    private static JToken UnwrapIncludeValue(JToken incValue, string baseName, string condKey)
+    {
+        if (incValue is not JObject incValueObj) return incValue;
+
+        JToken current = incValue;
+
+        // Handle alias
+        foreach (var p in incValueObj.Properties())
+        {
+            if (KeyMatchesPart(p.Name, baseName))
+            {
+                current = p.Value;
+                break;
+            }
+        }
+
+        // Handle deref switch unwrap
+        if (current is JObject currentObj)
+        {
+            foreach (var p in currentObj.Properties())
+            {
+                var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
+                if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
                 {
-                    var untokenizedExisting = GroqJsonHelper.Untokenize(existingKey);
-                    var firstOpen = untokenizedExisting.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
-                    if (firstOpen >= 0)
-                    {
-                        var firstClose = untokenizedExisting.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET, firstOpen);
-                        if (firstClose > firstOpen + 1)
-                        {
-                            // Filtered key (e.g. topic[_type=="foo"]) -> convert to base array key
-                            var bName = untokenizedExisting.Substring(0, firstOpen);
-                            var newKey = bName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
-
-                            var val = parent[existingKey];
-                            parent.Remove(existingKey);
-                            parent[newKey] = val;
-                        }
-                    }
+                    return p.Value;
                 }
             }
         }
 
-        return GroqJsonHelper.JsonToGroq(jObjectProjection.ToString(Formatting.None));
+        return current;
+    }
+
+    private static void EnsureBaseFieldKey(JObject parent, string existingKey)
+    {
+        var untokenizedExisting = GroqJsonHelper.Untokenize(existingKey);
+        var firstOpen = untokenizedExisting.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+        if (firstOpen < 0) return;
+
+        var firstClose = untokenizedExisting.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET, firstOpen);
+        if (firstClose > firstOpen + 1)
+        {
+            // Filtered key (e.g. topic[_type=="foo"]) -> convert to base array key
+            var bName = untokenizedExisting.Substring(0, firstOpen);
+            var newKey = bName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
+
+            var val = parent[existingKey];
+            parent.Remove(existingKey);
+            parent[newKey] = val;
+        }
     }
 }

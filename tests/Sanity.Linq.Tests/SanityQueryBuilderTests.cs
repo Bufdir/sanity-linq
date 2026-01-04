@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
@@ -66,7 +67,7 @@ public class SanityQueryBuilderTests
         // Invoke private ExpandIncludesInProjection via reflection from Helper
         var mi = helperType.GetMethod("ExpandIncludesInProjection", BindingFlags.Public | BindingFlags.Static)!;
         var expanded = (string)mi.Invoke(null, new object[] { "author", paramIncludes })!;
-        
+
         Assert.Contains("author", expanded);
         Assert.Contains("_type=='reference'=>@->", expanded);
     }
@@ -74,17 +75,10 @@ public class SanityQueryBuilderTests
     [Fact]
     public void GroqToJson_ShouldPreserveSpacesInStrings()
     {
-        var helperType = typeof(SanityQueryBuilderHelper);
-        var mi = helperType.GetMethod("GroqToJson", BindingFlags.Public | BindingFlags.Static);
-        Assert.NotNull(mi);
-
         // This simulates a projection that might contain a string with a space
         var groq = "title == \"John Doe\"";
-        var json = (string)mi.Invoke(null, new object[] { groq })!;
-
-        var miJsonToGroq = helperType.GetMethod("JsonToGroq", BindingFlags.Public | BindingFlags.Static);
-        Assert.NotNull(miJsonToGroq);
-        var finalGroq = (string)miJsonToGroq.Invoke(null, new object[] { json })!;
+        var json = GroqJsonHelper.GroqToJson(groq);
+        var finalGroq = GroqJsonHelper.JsonToGroq(json);
 
         Assert.Equal("title==\"John Doe\"", finalGroq);
     }
@@ -112,7 +106,7 @@ public class SanityQueryBuilderTests
     public void GetJoinProjection_Reference_UsesDereferencingSwitch()
     {
         var proj = CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>));
-        
+
         // Expected format: author{...,_type=='reference'=>@->{...}}
         Assert.Contains("author{", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
@@ -124,7 +118,7 @@ public class SanityQueryBuilderTests
     public void GetJoinProjection_IEnumerableReference_UsesDereferencingSwitchAndDefinedCheck()
     {
         var proj = CallGetJoinProjection("authors", "authors", typeof(List<SanityReference<Simple>>));
-        
+
         // Expected format: authors[][defined(@)]{...,_type=='reference'=>@->{...}}
         Assert.Contains("authors[][defined(@)]", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
@@ -134,7 +128,7 @@ public class SanityQueryBuilderTests
     public void GetJoinProjection_ImageAsset_HandlesDereferencedAsset()
     {
         var proj = CallGetJoinProjection("image", "image", typeof(Image));
-        
+
         // Expected to contain asset->{...}
         Assert.Contains("asset->", proj);
         Assert.Contains("image{", proj);
@@ -144,7 +138,7 @@ public class SanityQueryBuilderTests
     public void GetJoinProjection_PropertyToSanityReference_HandlesDereferencedProperty()
     {
         var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRef));
-        
+
         // Should contain the reference field with dereferencing switch
         Assert.Contains("myRef{", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
@@ -154,7 +148,7 @@ public class SanityQueryBuilderTests
     public void GetJoinProjection_PropertyToListOfSanityReference_HandlesDereferencedProperty()
     {
         var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRefList));
-        
+
         // Should contain the reference field with dereferencing switch
         Assert.Contains("myRefs[][defined(@)]", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
@@ -166,7 +160,7 @@ public class SanityQueryBuilderTests
         var builder = (SanityQueryBuilder)CreateBuilder();
         builder.AddProjection("field1");
         builder.AddProjection("field2");
-        Assert.Equal((string)"field1.field2", (string)builder.Projection);
+        Assert.Equal((string)"field1.field2", builder.Projection);
 
         builder.Projection = string.Empty;
         builder.AddProjection("{a}");
@@ -180,12 +174,12 @@ public class SanityQueryBuilderTests
         var builder = (SanityQueryBuilder)CreateBuilder();
         builder.AggregateFunction = "count";
         var sb = new StringBuilder();
-        
+
         var t = builder.GetType();
         var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
         mi.Invoke(builder, [sb, "title"]);
-        
-        Assert.Equal((string)".title", (string)sb.ToString());
+
+        Assert.Equal((string)".title", sb.ToString());
     }
 
     [Fact]
@@ -194,11 +188,11 @@ public class SanityQueryBuilderTests
         var builder = (SanityQueryBuilder)CreateBuilder();
         builder.FlattenProjection = true;
         var sb = new StringBuilder();
-        
+
         var t = builder.GetType();
         var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
         mi.Invoke(builder, [sb, "title, author"]);
-        
+
         Assert.Contains(" {...title, author}", sb.ToString());
     }
 
@@ -207,21 +201,21 @@ public class SanityQueryBuilderTests
     {
         var t = typeof(SanityQueryBuilder);
         var mi = t.GetMethod("GetPropertyProjectionList", BindingFlags.Public | BindingFlags.Static)!;
-        
+
         // Initial call
         var first = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
-        
+
         // Second call should come from cache (we can't easily prove it's from cache without reflection on the private field, 
         // but we can at least ensure it returns the same content)
         var second = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
-        
+
         Assert.Equal(first.Count, second.Count);
         Assert.Equal(first[0], second[0]);
 
         // Reflection to check cache
         var cacheInstance = ProjectionCache.Instance;
         var cacheField = typeof(ProjectionCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var cacheDict = (System.Collections.ICollection)cacheField.GetValue(cacheInstance)!;
+        var cacheDict = (ICollection)cacheField.GetValue(cacheInstance)!;
         Assert.True(cacheDict.Count > 0);
     }
 
@@ -230,17 +224,17 @@ public class SanityQueryBuilderTests
     {
         var builder = (SanityQueryBuilder)CreateBuilder();
         builder.DocType = typeof(AssetDoc);
-        
+
         var t = builder.GetType();
         var mi = t.GetMethod("AddDocTypeConstraintIfAny", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        
+
         // Initial call
         mi.Invoke(builder, null);
-        
+
         // Reflection to check cache
         var cacheInstance = DocTypeCache.Instance;
         var cacheField = typeof(DocTypeCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var cacheDict = (System.Collections.ICollection)cacheField.GetValue(cacheInstance)!;
+        var cacheDict = (ICollection)cacheField.GetValue(cacheInstance)!;
         Assert.True(cacheDict.Count > 0);
     }
 
@@ -254,32 +248,35 @@ public class SanityQueryBuilderTests
     private static object CreateBuilder()
     {
         var t = GetBuilderType();
-        return Activator.CreateInstance(t, nonPublic: true)!;
+        return Activator.CreateInstance(t, true)!;
     }
 
     private static Type GetBuilderType()
     {
         var asm = typeof(SanityClient).Assembly;
-        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", throwOnError: true)!;
+        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", true)!;
     }
 
     public class Simple
-    { }
+    {
+    }
 
-    public class AssetDoc : SanityDocument { }
+    public class AssetDoc : SanityDocument
+    {
+    }
 
     public class Image
     {
-        [Include]        public SanityReference<AssetDoc>? Asset { get; set; }
+        [Include] public SanityReference<AssetDoc>? Asset { get; set; }
     }
 
     public class PropertyWithRef
     {
-        [Include]        public SanityReference<Simple>? MyRef { get; set; }
+        [Include] public SanityReference<Simple>? MyRef { get; set; }
     }
 
     public class PropertyWithRefList
     {
-        [Include]        public List<SanityReference<Simple>>? MyRefs { get; set; }
+        [Include] public List<SanityReference<Simple>>? MyRefs { get; set; }
     }
 }

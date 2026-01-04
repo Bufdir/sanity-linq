@@ -228,30 +228,34 @@ internal class SanityMethodCallTranslator(
     {
         var targetType = mc.Method.GetGenericArguments()[0];
         var currentElementType = TypeSystem.GetElementType(currentType);
+        var originalType = currentType; // Save the original type before filtering
 
+        var filter = string.Empty;
         if (currentType != targetType && currentElementType != targetType)
         {
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
             {
-                currentIncludePath += $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
+                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
             else
             {
                 var sanityType = targetType.GetSanityTypeName();
-                currentIncludePath += $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
+                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
         }
 
-        AddInclude(currentIncludePath, mc.Type, null);
+        var fullPathWithFilter = currentIncludePath + filter;
+
+        AddInclude(fullPathWithFilter, mc.Type, null, originalType);
         currentType = targetType;
-        return currentIncludePath;
+        return fullPathWithFilter;
     }
 
     private string HandleIncludePath(Expression selectorExpr, string currentIncludePath, out Type currentType)
     {
         var selector = (LambdaExpression)(selectorExpr is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : selectorExpr);
         var rawPath = transformOperand(selector.Body);
-        var selectorPath = rawPath.Replace(SanityConstants.DEREFERENCING_OPERATOR, string.Empty).Replace(SanityConstants.AT, string.Empty).Replace(SanityConstants.ARRAY_INDICATOR, string.Empty).Trim(SanityConstants.DOT[0]);
+        var selectorPath = rawPath.Replace(SanityConstants.AT, string.Empty).Replace(SanityConstants.ARRAY_INDICATOR, string.Empty).Trim(SanityConstants.DOT[0]);
         if (string.IsNullOrEmpty(selectorPath))
         {
             if (rawPath.Contains(SanityConstants.DEREFERENCING_OPERATOR))
@@ -266,21 +270,48 @@ internal class SanityMethodCallTranslator(
             }
         }
 
-        currentIncludePath = selectorPath.StartsWith(SanityConstants.OPEN_BRACKET) ? $"{currentIncludePath}{selectorPath}" : $"{currentIncludePath}{SanityConstants.DOT}{selectorPath}".TrimEnd(SanityConstants.DOT[0]);
+        currentIncludePath = selectorPath.StartsWith(SanityConstants.OPEN_BRACKET) || selectorPath.StartsWith(SanityConstants.DEREFERENCING_OPERATOR)
+            ? $"{currentIncludePath}{selectorPath}"
+            : $"{currentIncludePath}{SanityConstants.DOT}{selectorPath}".TrimEnd(SanityConstants.DOT[0]);
         AddInclude(currentIncludePath, selector.Body.Type, null);
         currentType = selector.Body.Type;
         return currentIncludePath;
     }
 
 
-    private string AddInclude(string fieldPath, Type propertyType, string? sourceName)
+    private string AddInclude(string fieldPath, Type propertyType, string? sourceName, Type? originalType = null)
     {
-        if (queryBuilder.Includes.ContainsKey(fieldPath)) return fieldPath;
+        var targetName = fieldPath.Split('.', '-').Last().TrimStart('>');
+        var actualSourceName = (sourceName ?? targetName).Split('.', '-').Last().TrimStart('>');
 
-        var targetName = fieldPath.Split('.').Last();
-        var actualSourceName = sourceName ?? targetName;
         var includeValue = SanityQueryBuilder.GetJoinProjection(actualSourceName, targetName, propertyType, 0, 0, true);
-        queryBuilder.Includes.Add(fieldPath, includeValue);
+
+        if (queryBuilder.Includes.TryGetValue(fieldPath, out var existingValue))
+            if (existingValue == includeValue)
+                return fieldPath;
+        // If the path exists but with different value, we might need to merge them later in projection expansion
+        // For now, let's allow overwriting or appending if it's a filtered include
+        queryBuilder.Includes[fieldPath] = includeValue;
+
+        // If this is a filtered include (contains [filter]), ensure the base field is also included
+        // This is necessary for proper deserialization of union types
+        var openBracketIndex = targetName.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+        if (openBracketIndex > 0)
+        {
+            var baseFieldName = targetName.Substring(0, openBracketIndex);
+            var lastDotIndex = fieldPath.LastIndexOf('.');
+            var baseFieldPath = lastDotIndex >= 0
+                ? fieldPath.Substring(0, lastDotIndex + 1) + baseFieldName
+                : baseFieldName;
+
+            if (!queryBuilder.Includes.ContainsKey(baseFieldPath) && originalType != null)
+            {
+                // Add the base field with the original (unfiltered) type
+                var baseIncludeValue = SanityQueryBuilder.GetJoinProjection(baseFieldName, baseFieldName, originalType, 0, 0);
+                queryBuilder.Includes[baseFieldPath] = baseIncludeValue;
+            }
+        }
+
         return fieldPath;
     }
 
@@ -457,28 +488,64 @@ internal class SanityMethodCallTranslator(
         result = null;
         var collectionExpr = e.Arguments[0];
 
-        // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id)
+        // Handle topicsWithSuperTopic.Any(ts => ts == t.Value.Id) or topics.Any(t => t.Id == target)
         // If the collection can be evaluated locally, use HandleContains logic
         if (collectionExpr is ConstantExpression expression &&
             lambda.Body is BinaryExpression { NodeType: ExpressionType.Equal } be)
         {
-            // We need to find the MemberExpression in lambda.Body that corresponds to the 't' parameter.
-            // Example: ts == t.Value.Id. Here 'ts' is the collection element, 't.Value.Id' is the target.
+            Expression? paramSide = null;
             Expression? target = null;
-            if (be.Left == lambda.Parameters[0]) target = be.Right;
-            else if (be.Right == lambda.Parameters[0]) target = be.Left;
 
-            if (target != null)
+            if (IsParameterOrMemberOfParameter(be.Left, lambda.Parameters[0]))
             {
-                var collection = expression.Value as IEnumerable ?? Array.Empty<object>();
+                paramSide = be.Left;
+                target = be.Right;
+            }
+            else if (IsParameterOrMemberOfParameter(be.Right, lambda.Parameters[0]))
+            {
+                paramSide = be.Right;
+                target = be.Left;
+            }
+
+            if (paramSide != null && target != null)
+            {
+                var collection = expression.Value as IEnumerable;
+                if (collection == null || collection is IQueryable) return false;
+
+                // Extract values from collection based on paramSide
+                var valuesList = new List<object?>();
+                var param = lambda.Parameters[0];
+
+                // Create a lambda to evaluate paramSide
+                var evaluator = Expression.Lambda(paramSide, param).Compile();
+
+                foreach (var item in collection)
+                    try
+                    {
+                        var val = evaluator.DynamicInvoke(item);
+                        valuesList.Add(val);
+                    }
+                    catch
+                    {
+                        // Ignore items that fail evaluation
+                    }
+
                 var targetOperand = transformOperand(target);
-                var values = SanityMethodCallTranslatorHelper.JoinValues(collection);
-                result = $"{targetOperand} {SanityConstants.IN} {values}";
+                var valuesGroq = SanityMethodCallTranslatorHelper.JoinValues(valuesList);
+                result = $"{targetOperand} {SanityConstants.IN} {valuesGroq}";
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsParameterOrMemberOfParameter(Expression e, ParameterExpression p)
+    {
+        var current = e;
+        while (current is MemberExpression me) current = me.Expression;
+        while (current is UnaryExpression ue) current = ue.Operand;
+        return current == p;
     }
 
     private string WrapWithCountGreaterThanZero(string operand)

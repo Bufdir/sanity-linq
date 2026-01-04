@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.Internal;
 
 namespace Sanity.Linq.QueryProvider;
 
-internal static partial class SanityQueryBuilderHelper
+internal static class SanityQueryBuilderHelper
 {
     public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit = false)
     {
@@ -82,7 +83,7 @@ internal static partial class SanityQueryBuilderHelper
         var filter = isEnumerable && !fieldRef.Contains(SanityConstants.DEFINED) ? SanityConstants.ARRAY_FILTER : string.Empty;
         var suffix = indicator + filter;
 
-        if (IsSimpleType(targetType)) return $"{fieldRef}{suffix}";
+        if (targetType.IsSimpleType()) return $"{fieldRef}{suffix}";
 
         var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
 
@@ -219,24 +220,16 @@ internal static partial class SanityQueryBuilderHelper
     {
         var tokens = SanityGroqTokenRegistry.Instance.Tokens;
         var matches = new List<JObject>();
+        var isDerefPart = part == SanityConstants.DEREFERENCING_OPERATOR;
+
         foreach (var property in current)
         {
-            if (KeyMatchesPart(property.Key, part) && property.Value is JObject obj)
-            {
-                matches.Add(obj);
-
-                // Also check for a deref section inside this child
-                foreach (var (childKey, childValue) in obj)
-                {
-                    var isDeref = childKey.Contains(tokens[SanityConstants.DEREFERENCING_SWITCH]) ||
-                                  childKey.Contains(tokens[SanityConstants.DEREFERENCING_OPERATOR]);
-
-                    if (isDeref && childValue is JObject derefObj) matches.Add(derefObj);
-                }
-            }
-
             var hasDerefToken = property.Key.Contains(tokens[SanityConstants.DEREFERENCING_SWITCH]) ||
                                 property.Key.Contains(tokens[SanityConstants.DEREFERENCING_OPERATOR]);
+
+            if (isDerefPart && hasDerefToken && property.Value is JObject obj)
+                matches.Add(obj);
+            else if (KeyMatchesPart(property.Key, part) && property.Value is JObject obj2) matches.Add(obj2);
 
             if (hasDerefToken && property.Value is JObject derefObj2) matches.AddRange(FindAllChildObjects(derefObj2, part));
         }
@@ -289,8 +282,13 @@ internal static partial class SanityQueryBuilderHelper
     {
         if (key == part) return true;
 
+        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
+        if (part == SanityConstants.DEREFERENCING_OPERATOR)
+            if (key.Contains(tokens[SanityConstants.DEREFERENCING_SWITCH]) || key.Contains(tokens[SanityConstants.DEREFERENCING_OPERATOR]))
+                return true;
+
         // Simplify key: un-tokenize it and remove spaces
-        var k = Untokenize(key).Replace(SanityConstants.SPACE, string.Empty);
+        var k = GroqJsonHelper.Untokenize(key).Replace(SanityConstants.SPACE, string.Empty);
 
         // Simplify part: remove spaces
         var p = part.Replace(SanityConstants.SPACE, string.Empty);
@@ -298,131 +296,27 @@ internal static partial class SanityQueryBuilderHelper
         if (k == p) return true;
 
         // Base name match (e.g. "topic" matches "topic[...]").
-        // We only care about the part before the first [ or -> or . (though dots shouldn't be here)
-        var kBase = k.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0];
-        var pBase = p.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0];
+        // We only care about the part before the first [ or -> or .
+        var kBase = k.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0].Split(SanityConstants.CHAR_DOT)[0];
+        var pBase = p.Split(SanityConstants.CHAR_OPEN_BRACKET, SanityConstants.CHAR_HYPHEN)[0].Split(SanityConstants.CHAR_DOT)[0];
 
-        return kBase == pBase && !string.IsNullOrEmpty(kBase);
+        if (kBase == pBase && !string.IsNullOrEmpty(kBase)) return true;
+
+        // Handle tokenized match for base field
+        var untokenizedKey = GroqJsonHelper.Untokenize(key);
+        var untokenizedPart = GroqJsonHelper.Untokenize(part);
+        if (untokenizedKey.StartsWith(untokenizedPart) && (untokenizedKey.Length == untokenizedPart.Length || untokenizedKey[untokenizedPart.Length] == SanityConstants.CHAR_OPEN_BRACKET || untokenizedKey[untokenizedPart.Length] == SanityConstants.CHAR_HYPHEN || untokenizedKey[untokenizedPart.Length] == SanityConstants.CHAR_DOT))
+            return true;
+
+        return false;
     }
 
     private static string[] ParseIncludePath(string includeKey)
     {
         return includeKey
-            .Replace(SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DOT)
+            .Replace(SanityConstants.DEREFERENCING_OPERATOR, SanityConstants.DOT + SanityConstants.DEREFERENCING_OPERATOR + SanityConstants.DOT)
             .TrimEnd(SanityConstants.CHAR_DOT)
             .Split(SanityConstants.CHAR_DOT, StringSplitOptions.RemoveEmptyEntries);
-    }
-
-    private static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject)
-    {
-        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
-        var targets = GetMergeTargets(parent, tokens);
-
-        foreach (var targetObj in targets)
-            if (TryFindProperty(includeObject, part, out var newKey, out var newValue))
-                PerformMergeOrUpdate(targetObj, part, newKey, newValue);
-    }
-
-    private static List<JObject> GetMergeTargets(JObject parent, IReadOnlyDictionary<string, string> tokens)
-    {
-        var targets = new List<JObject> { parent };
-
-        foreach (var property in parent)
-        {
-            var isDeref = property.Key.Contains(tokens[SanityConstants.DEREFERENCING_SWITCH]) ||
-                          property.Key.Contains(tokens[SanityConstants.DEREFERENCING_OPERATOR]);
-
-            if (isDeref && property.Value is JObject derefObj) targets.Add(derefObj);
-        }
-
-        return targets;
-    }
-
-    private static bool TryFindProperty(JObject obj, string part, [NotNullWhen(true)] out string? key, [NotNullWhen(true)] out JToken? value)
-    {
-        foreach (var property in obj)
-            if (KeyMatchesPart(property.Key, part))
-            {
-                key = property.Key;
-                value = property.Value!;
-                return true;
-            }
-
-        key = null;
-        value = null;
-        return false;
-    }
-
-    private static void PerformMergeOrUpdate(JObject targetObj, string part, string newKey, JToken newValue)
-    {
-        if (TryFindProperty(targetObj, part, out var existingKey, out var existingValue))
-        {
-            if (existingValue is JObject existingObj && newValue is JObject newObj)
-            {
-                // Merge them!
-                existingObj.Merge(newObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
-
-                // Prefer the new key if it has a filter and the existing one doesn't (or has a simpler one)
-                var untokenizedExisting = Untokenize(existingKey);
-                var untokenizedNew = Untokenize(newKey);
-
-                if (untokenizedNew.Contains(SanityConstants.CHAR_OPEN_BRACKET) && (!untokenizedExisting.Contains(SanityConstants.CHAR_OPEN_BRACKET) || untokenizedNew.Length > untokenizedExisting.Length))
-                {
-                    targetObj.Remove(existingKey);
-                    targetObj[newKey] = existingValue;
-                }
-            }
-            else
-            {
-                // Update value but keep the existing key (preserving suffixes like [])
-                targetObj[existingKey] = newValue;
-            }
-        }
-        else
-        {
-            // Add new
-            targetObj[newKey] = newValue;
-        }
-    }
-
-    private static string Untokenize(string key)
-    {
-        if (string.IsNullOrEmpty(key)) return key;
-        var reverseTokens = SanityGroqTokenRegistry.Instance.ReverseTokens;
-
-        var index = key.IndexOf(SanityConstants.TOKEN_PREFIX, StringComparison.Ordinal);
-        if (index == -1) return key;
-
-        var sb = new StringBuilder();
-        var lastIndex = 0;
-        while (index != -1)
-        {
-            sb.Append(key, lastIndex, index - lastIndex);
-            if (index + 10 <= key.Length)
-            {
-                var token = key.Substring(index, 10);
-                if (reverseTokens.TryGetValue(token, out var val))
-                {
-                    sb.Append(val);
-                    lastIndex = index + 10;
-                }
-                else
-                {
-                    sb.Append(SanityConstants.TOKEN_PREFIX);
-                    lastIndex = index + 6;
-                }
-            }
-            else
-            {
-                sb.Append(SanityConstants.TOKEN_PREFIX);
-                lastIndex = index + 6;
-            }
-
-            index = key.IndexOf(SanityConstants.TOKEN_PREFIX, lastIndex, StringComparison.Ordinal);
-        }
-
-        sb.Append(key, lastIndex, key.Length - lastIndex);
-        return sb.ToString();
     }
 
     private static bool TryGetEnumerableElementType(Type t, out Type? elementType)
@@ -441,35 +335,18 @@ internal static partial class SanityQueryBuilderHelper
         return false;
     }
 
-    private static bool IsSimpleType(Type type)
-    {
-        var actualType = Nullable.GetUnderlyingType(type) ?? type;
-        return actualType.IsPrimitive ||
-               actualType.IsEnum ||
-               actualType == typeof(string) ||
-               actualType == typeof(decimal) ||
-               actualType == typeof(DateTime) ||
-               actualType == typeof(DateTimeOffset) ||
-               actualType == typeof(TimeSpan) ||
-               actualType == typeof(Guid);
-    }
 
     public static string ExpandIncludesInProjection(string projection, Dictionary<string, string>? includes)
     {
         if (includes == null || includes.Count == 0) return projection;
 
-        // Finds and replaces includes in a projection by converting projection (GROQ) to an equivalent JSON representation,
-        // modifying the JSON replacement and then converting back to GROQ.
-        //
-        // The reason for converting to JSON is simply to be able to work with the query in a hierarchical structure.
-        // This could also be done creating some sort of query tree object, which might be a more appropriate / cleaner solution.
-
+        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
         var normalizedProjection = projection.Trim();
         var toConvert = normalizedProjection.StartsWith(SanityConstants.OPEN_BRACE) && normalizedProjection.EndsWith(SanityConstants.CLOSE_BRACE)
             ? normalizedProjection
             : SanityConstants.OPEN_BRACE + normalizedProjection + SanityConstants.CLOSE_BRACE;
 
-        var jsonProjection = GroqToJson(toConvert);
+        var jsonProjection = GroqJsonHelper.GroqToJson(toConvert);
         JObject jObjectProjection;
         try
         {
@@ -482,146 +359,139 @@ internal static partial class SanityQueryBuilderHelper
             return projection;
         }
 
-        // Use the includes provided via parameter, not the instance field
-        foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key))
+        // Apply includes one by one
+        foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key.Length).ThenBy(k => k.Key))
         {
-            var jsonInclude = GroqToJson(SanityConstants.OPEN_BRACE + includeValue + SanityConstants.CLOSE_BRACE);
-            JObject jObjectInclude;
-            try
-            {
-                if (JsonConvert.DeserializeObject(jsonInclude) is not JObject objInclude) continue;
-                jObjectInclude = objInclude;
-            }
-            catch (Exception)
-            {
-                continue;
-            }
-
             var pathParts = ParseIncludePath(includeKey);
-
-            // Traverse to parent
             EnsurePath(jObjectProjection, pathParts, out var parents);
 
-            // Replace or set the last segment in all parents
             var lastPart = pathParts[^1];
-            foreach (var parent in parents) ReplaceFieldWithInclude(parent, lastPart, jObjectInclude);
-        }
+            var jsonInclude = GroqJsonHelper.GroqToJson(SanityConstants.OPEN_BRACE + includeValue + SanityConstants.CLOSE_BRACE);
+            if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude) continue;
 
-        // Convert back to JSON
-        jsonProjection = jObjectProjection.ToString(Formatting.None);
-        // Convert JSON back to GROQ query
-        return JsonToGroq(jsonProjection);
-    }
-
-    public static string GroqToJson(string groq)
-    {
-        if (string.IsNullOrEmpty(groq)) return groq;
-
-        var registry = SanityGroqTokenRegistry.Instance;
-        var tokens = registry.Tokens;
-        var sortedKeys = registry.SortedTokenKeys;
-
-        var sb = new StringBuilder(groq.Length);
-        var inQuotes = false;
-        char? quoteChar = null;
-        var isEscaped = false;
-
-        for (var i = 0; i < groq.Length; i++)
-        {
-            var c = groq[i];
-
-            // 1. Try match token
-            string? matchedKey = null;
-            string? matchedToken = null;
-            foreach (var key in sortedKeys)
-                if (i + key.Length <= groq.Length)
-                {
-                    var match = !key.Where((t, j) => groq[i + j] != t).Any();
-
-                    if (!match) continue;
-                    matchedKey = key;
-                    matchedToken = tokens[key];
-                    break;
-                }
-
-            if (matchedKey != null)
+            foreach (var parent in parents)
+            foreach (var incProp in jObjectInclude.Properties())
             {
-                if (matchedKey == SanityConstants.STRING_DELIMITER)
-                {
-                    if (!inQuotes)
+                var incKey = incProp.Name;
+                var incValue = incProp.Value;
+
+                var untokenizedIncKey = GroqJsonHelper.Untokenize(incKey);
+                var openBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+                var closeBrkt = untokenizedIncKey.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET);
+                var isFiltered = openBrkt >= 0 && closeBrkt > openBrkt + 1;
+                var baseName = isFiltered ? untokenizedIncKey.Substring(0, openBrkt) : untokenizedIncKey;
+
+                // 1. Find or create existing base object
+                string? existingKey = null;
+                JObject? existingObj = null;
+                foreach (var prop in parent.Properties())
+                    if (KeyMatchesPart(prop.Name, baseName))
                     {
-                        inQuotes = true;
-                        quoteChar = '"';
-                        isEscaped = false;
+                        existingKey = prop.Name;
+                        if (prop.Value is JObject obj) existingObj = obj;
+                        break;
                     }
-                    else if (quoteChar == '"' && !isEscaped)
+
+                if (existingObj == null)
+                {
+                    // No existing property, add new or create base
+                    if (isFiltered || lastPart.Contains(SanityConstants.OPEN_BRACKET))
                     {
-                        inQuotes = false;
-                        quoteChar = null;
+                        existingKey = baseName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
+                        existingObj = new JObject { [tokens[SanityConstants.SPREAD_OPERATOR]] = true };
+                        parent[existingKey] = existingObj;
+                    }
+                    else
+                    {
+                        parent[incKey] = incValue;
+                        existingKey = incKey;
+                        if (incValue is JObject obj2) existingObj = obj2;
                     }
                 }
 
-                sb.Append(matchedToken);
-                i += matchedKey.Length - 1;
-                if (inQuotes) isEscaped = false;
-                continue;
-            }
-
-            // 2. Handle non-token characters
-            if (c == SanityConstants.STRING_DELIMITER[0] || c == SanityConstants.SINGLE_QUOTE[0])
-            {
-                if (!inQuotes)
+                // 2. Merge properties from include into existing object
+                if (existingObj != null)
                 {
-                    inQuotes = true;
-                    quoteChar = c;
-                    isEscaped = false;
+                    if (isFiltered)
+                    {
+                        var filter = untokenizedIncKey.Substring(openBrkt + 1, closeBrkt - openBrkt - 1);
+                        var normalizedFilter = filter.Replace(SanityConstants.STRING_DELIMITER, SanityConstants.SINGLE_QUOTE).Replace(" ", "");
+                        var condKey = normalizedFilter + SanityConstants.ARROW;
+
+                        // Unwrap incValue if it's aliased or a deref switch
+                        if (incValue is JObject incValueObj)
+                        {
+                            // Handle alias
+                            foreach (var p in incValueObj.Properties())
+                                if (KeyMatchesPart(p.Name, baseName))
+                                {
+                                    incValue = p.Value;
+                                    break;
+                                }
+
+                            // Handle deref switch unwrap
+                            if (incValue is JObject incValueObjUnwrapped)
+                                foreach (var p in incValueObjUnwrapped.Properties())
+                                {
+                                    var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
+                                    if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
+                                    {
+                                        incValue = p.Value;
+                                        break;
+                                    }
+                                }
+                        }
+
+                        // Find target conditional expansion (handle @-> suffix)
+                        string? targetCondKey = null;
+                        foreach (var p in existingObj.Properties())
+                        {
+                            var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
+                            if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
+                            {
+                                targetCondKey = p.Name;
+                                break;
+                            }
+                        }
+
+                        if (targetCondKey != null && existingObj[targetCondKey] is JObject existingCondObj && incValue is JObject incValueObj2)
+                            existingCondObj.Merge(incValueObj2, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
+                        else
+                            existingObj[condKey] = incValue;
+                    }
+                    else
+                    {
+                        // Not filtered, merge directly
+                        if (incValue is JObject incValueObj)
+                            existingObj.Merge(incValueObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Union });
+                        else
+                            existingObj[incKey] = incValue;
+                    }
                 }
-                else if (c == quoteChar && !isEscaped)
+
+                // 3. Ensure key is base name (with [] if it was filtered)
+                if (existingKey != null)
                 {
-                    inQuotes = false;
-                    quoteChar = null;
+                    var untokenizedExisting = GroqJsonHelper.Untokenize(existingKey);
+                    var firstOpen = untokenizedExisting.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+                    if (firstOpen >= 0)
+                    {
+                        var firstClose = untokenizedExisting.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET, firstOpen);
+                        if (firstClose > firstOpen + 1)
+                        {
+                            // Filtered key (e.g. topic[_type=="foo"]) -> convert to base array key
+                            var bName = untokenizedExisting.Substring(0, firstOpen);
+                            var newKey = bName + SanityConstants.ARRAY_INDICATOR + SanityConstants.ARRAY_FILTER;
+
+                            var val = parent[existingKey];
+                            parent.Remove(existingKey);
+                            parent[newKey] = val;
+                        }
+                    }
                 }
             }
-
-            if (c == SanityConstants.SPACE[0] && !inQuotes) continue;
-
-            sb.Append(c);
-
-            if (!inQuotes) continue;
-            if (c == '\\') isEscaped = !isEscaped;
-            else isEscaped = false;
         }
 
-        var json = sb.ToString();
-        json = json.Replace(SanityConstants.OPEN_BRACE, SanityConstants.COLON + SanityConstants.OPEN_BRACE);
-        if (json.StartsWith(SanityConstants.COLON)) json = json.Substring(1);
-
-        // Replace variable names with valid JSON (e.g., convert myField to "myField": true)
-        var reVariables = MyRegex();
-        json = reVariables.Replace(json, m => $"{m.Groups[1].Value}{SanityConstants.STRING_DELIMITER}{m.Groups[2].Value}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}{SanityConstants.TRUE}{m.Groups[3].Value}");
-        // Second pass to handle overlapping matches like {a,b,c}
-        json = reVariables.Replace(json, m => $"{m.Groups[1].Value}{SanityConstants.STRING_DELIMITER}{m.Groups[2].Value}{SanityConstants.STRING_DELIMITER}{SanityConstants.COLON}{SanityConstants.TRUE}{m.Groups[3].Value}");
-
-        return json;
+        return GroqJsonHelper.JsonToGroq(jObjectProjection.ToString(Formatting.None));
     }
-
-    public static string JsonToGroq(string json)
-    {
-        if (string.IsNullOrEmpty(json)) return json;
-
-        var groq = json
-            .Replace(SanityConstants.COLON + SanityConstants.OPEN_BRACE, SanityConstants.OPEN_BRACE)
-            .Replace(SanityConstants.COLON + SanityConstants.TRUE, string.Empty)
-            .Replace(SanityConstants.STRING_DELIMITER, string.Empty);
-
-        return Untokenize(groq);
-    }
-
-#if NET7_0_OR_GREATER
-    [GeneratedRegex("(,|{)([^\"}:,]+)(,|})")]
-    internal static partial Regex MyRegex();
-#else
-    private static readonly Regex _myRegex = new Regex("(,|{)([^\"}:,]+)(,|})", RegexOptions.Compiled);
-    internal static Regex MyRegex() => _myRegex;
-#endif
 }

@@ -67,7 +67,7 @@ internal static class SanityExpressionTransformerHelper
             return transformOperand(m.Expression, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);
 
         // Optimization: if we have SanityReference<T>.Value.Id, we can use coalesce(_ref, _key)
-        if (member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM &&
+        if (useCoalesceFallback && member.Name == "Id" && m.Expression is MemberExpression { Member: { Name: "Value", DeclaringType.IsGenericType: true } } innerM &&
             innerM.Member.DeclaringType.GetGenericTypeDefinition() == typeof(SanityReference<>))
         {
             var refPath = transformOperand(innerM.Expression!, methodCallHandler, binaryExpressionHandler, unaryExpressionHandler, useCoalesceFallback);

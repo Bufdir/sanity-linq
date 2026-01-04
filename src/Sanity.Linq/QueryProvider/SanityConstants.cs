@@ -88,6 +88,6 @@ internal static class SanityConstants
     public const string ARROW = "=>";
     public const string TOKEN_PREFIX = "__GTK_";
 
-    public const string ARRAY_FILTER = OPEN_BRACKET + DEFINED + OPEN_PAREN + AT + CLOSE_PAREN + CLOSE_BRACKET;
+    public const string ARRAY_FILTER = OPEN_BRACKET + SPACE + DEFINED + OPEN_PAREN + AT + CLOSE_PAREN + SPACE + CLOSE_BRACKET;
     public const string DEREFERENCING_SWITCH = TYPE + EQUALS + SINGLE_QUOTE + REFERENCE + SINGLE_QUOTE + ARROW + AT + DEREFERENCING_OPERATOR;
 }

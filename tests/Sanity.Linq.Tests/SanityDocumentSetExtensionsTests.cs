@@ -662,8 +662,7 @@ public class SanityDocumentSetExtensionsTests
         Assert.Contains("_type == \"myDoc\"", groq);
         Assert.Contains("author", groq);
         // For non-SanityReference, it should just include the fields of the nested object
-        // Based on the failed test output, it was author{...,_type="...
-        Assert.Contains("author{", groq);
+        Assert.Contains("author {", groq);
     }
 
     [Fact]

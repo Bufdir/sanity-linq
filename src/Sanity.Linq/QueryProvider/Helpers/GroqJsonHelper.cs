@@ -103,7 +103,38 @@ internal static partial class GroqJsonHelper
             .Replace(SanityConstants.COLON + SanityConstants.TRUE, string.Empty)
             .Replace(SanityConstants.STRING_DELIMITER, string.Empty);
 
-        return Untokenize(groq);
+        groq = Untokenize(groq);
+
+        // Add spaces for syntax/readability/compatibility
+        var sb = new StringBuilder();
+        for (var i = 0; i < groq.Length; i++)
+        {
+            var c = groq[i];
+            if (c == '{') sb.Append(" { ");
+            else if (c == '}') sb.Append(" } ");
+            else if (c == ',') sb.Append(", ");
+            else sb.Append(c);
+        }
+
+        groq = sb.ToString();
+
+        // Handle operators and spacing
+        groq = groq.Replace("...", " ... ");
+        groq = groq.Replace("==", " == ");
+        groq = groq.Replace("=>", " => ");
+
+        // Ensure dereferencing operator has correct spacing
+        groq = groq.Replace("@ ->", "@->");
+        groq = groq.Replace("@-> {", "@->{");
+        groq = groq.Replace("=> @->", "=> @->");
+
+        // Convert single quotes to double quotes for the final GROQ as requested by user
+        groq = groq.Replace("'", "\"");
+
+        // Final cleanup of extra spaces
+        while (groq.Contains("  ")) groq = groq.Replace("  ", " ");
+
+        return groq.Trim();
     }
 
     public static string Untokenize(string key)
@@ -151,7 +182,10 @@ internal static partial class GroqJsonHelper
     [GeneratedRegex("(,|{)([^\"}:,]+)(,|})")]
     internal static partial Regex MyRegex();
 #else
-    private static readonly Regex _myRegex = new Regex("(,|{)([^\"}:,]+)(,|})", RegexOptions.Compiled);
-    internal static Regex MyRegex() => _myRegex;
+    private static readonly Regex _myRegex = new("(,|{)([^\"}:,]+)(,|})", RegexOptions.Compiled);
+    internal static Regex MyRegex()
+    {
+        return _myRegex;
+    }
 #endif
 }

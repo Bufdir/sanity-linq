@@ -44,8 +44,7 @@ public class SanityQueryBuilderEdgeCasesTests
     public void GetJoinProjection_IEnumerable_Of_SanityReference()
     {
         var s = CallGetJoinProjection("refs", "refs", typeof(List<SanityReference<Simple>>));
-        // No spaces are inserted in this case
-        Assert.Contains("refs[][defined(@)]", s);
+        Assert.Contains("refs[][ defined(@) ]", s);
     }
 
     [Fact]
@@ -90,18 +89,19 @@ public class SanityQueryBuilderEdgeCasesTests
     private static object CreateBuilder()
     {
         var t = GetBuilderType();
-        return Activator.CreateInstance(t, nonPublic: true)!;
+        return Activator.CreateInstance(t, true)!;
     }
 
     // Helper: get internal builder type
     private static Type GetBuilderType()
     {
         var asm = typeof(SanityClient).Assembly;
-        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", throwOnError: true)!;
+        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", true)!;
     }
 
     private class Simple
-    { }
+    {
+    }
 
     // Use a public helper type to ensure reflection in the library can see its public properties
     // (public members on a non-public declaring type may not be returned by default GetProperties()).

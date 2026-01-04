@@ -39,7 +39,7 @@ public class SanityQueryBuilderTests
         // Should start with star selection and contain expanded include for author
         Assert.StartsWith("*{", result);
         Assert.Contains("author", result);
-        Assert.Contains("_type=='reference'=>@->", result);
+        Assert.Contains("_type == \"reference\" => @->", result);
         // Should contain ordering and slice [2..4]
         Assert.Contains("| order(title asc)", result);
         Assert.EndsWith(" [2..4]", result);
@@ -69,7 +69,7 @@ public class SanityQueryBuilderTests
         var expanded = (string)mi.Invoke(null, new object[] { "author", paramIncludes })!;
 
         Assert.Contains("author", expanded);
-        Assert.Contains("_type=='reference'=>@->", expanded);
+        Assert.Contains("_type == \"reference\" => @->", expanded);
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class SanityQueryBuilderTests
         var json = GroqJsonHelper.GroqToJson(groq);
         var finalGroq = GroqJsonHelper.JsonToGroq(json);
 
-        Assert.Equal("title==\"John Doe\"", finalGroq);
+        Assert.Equal("title == \"John Doe\"", finalGroq);
     }
 
     [Fact]
@@ -119,8 +119,8 @@ public class SanityQueryBuilderTests
     {
         var proj = CallGetJoinProjection("authors", "authors", typeof(List<SanityReference<Simple>>));
 
-        // Expected format: authors[][defined(@)]{...,_type=='reference'=>@->{...}}
-        Assert.Contains("authors[][defined(@)]", proj);
+        // Expected format: authors[][ defined(@) ]{...,_type=='reference'=>@->{...}}
+        Assert.Contains("authors[][ defined(@) ]", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
     }
 
@@ -129,8 +129,9 @@ public class SanityQueryBuilderTests
     {
         var proj = CallGetJoinProjection("image", "image", typeof(Image));
 
-        // Expected to contain asset->{...}
-        Assert.Contains("asset->", proj);
+        // Expected to contain asset { ..., _type == 'reference' => @-> { ... } }
+        Assert.Contains("asset{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
         Assert.Contains("image{", proj);
     }
 
@@ -150,7 +151,7 @@ public class SanityQueryBuilderTests
         var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRefList));
 
         // Should contain the reference field with dereferencing switch
-        Assert.Contains("myRefs[][defined(@)]", proj);
+        Assert.Contains("myRefs[][ defined(@) ]", proj);
         Assert.Contains("_type=='reference'=>@->", proj);
     }
 
@@ -165,7 +166,7 @@ public class SanityQueryBuilderTests
         builder.Projection = string.Empty;
         builder.AddProjection("{a}");
         builder.AddProjection("{b}");
-        Assert.Equal((string)"{a} {b}", (string)builder.Projection);
+        Assert.Equal((string)"{a} {b}", builder.Projection);
     }
 
     [Fact]

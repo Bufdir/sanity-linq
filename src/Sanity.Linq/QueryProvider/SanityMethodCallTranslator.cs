@@ -235,12 +235,12 @@ internal class SanityMethodCallTranslator(
         {
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(SanityReference<>))
             {
-                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
+                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{SanityConstants.REFERENCE}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
             else
             {
                 var sanityType = targetType.GetSanityTypeName();
-                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
+                filter = $"{SanityConstants.OPEN_BRACKET}{SanityConstants.TYPE}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER}{SanityConstants.CLOSE_BRACKET}";
             }
         }
 

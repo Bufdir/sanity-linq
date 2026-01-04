@@ -36,42 +36,44 @@ internal static class SanityQueryBuilderHelper
 
     private static string HandleSanityReferenceCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel)
     {
-        var fields = GetPropertyProjectionList(propertyType.GetGenericArguments()[0], nestingLevel, maxNestingLevel);
+        var targetType = propertyType.IsGenericType ? propertyType.GetGenericArguments()[0] : propertyType;
+        var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
         var fieldList = JoinComma(fields);
-        return $"{fieldRef}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
+        return $"{fieldRef}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleListOfSanityReferenceCase(string fieldRef, Type refElement, int nestingLevel, int maxNestingLevel)
     {
-        var fields = GetPropertyProjectionList(refElement, nestingLevel, maxNestingLevel);
+        var targetType = refElement.IsGenericType ? refElement.GetGenericArguments()[0] : refElement;
+        var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
         var fieldList = JoinComma(fields);
 
         var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? string.Empty : SanityConstants.ARRAY_INDICATOR;
         var filter = fieldRef.Contains(SanityConstants.DEFINED) ? string.Empty : SanityConstants.ARRAY_FILTER;
 
-        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
+        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleImageAssetCase(string fieldRef, Type propertyType, PropertyInfo assetProp, int nestingLevel, int maxNestingLevel)
     {
         var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
         var nestedFields = GetPropertyProjectionList(assetProp.PropertyType, nestingLevel, maxNestingLevel);
-        var projectedFields = fields
-            .Select(f => f.StartsWith(SanityConstants.ASSET)
-                ? $"{SanityConstants.ASSET}{SanityConstants.DEREFERENCING_OPERATOR}{(nestedFields.Count > 0 ? SanityConstants.OPEN_BRACE + JoinComma(nestedFields) + SanityConstants.CLOSE_BRACE : string.Empty)}"
-                : f);
-        var fieldList = JoinComma(projectedFields);
-        return $"{fieldRef}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
+        var fieldList = JoinComma(fields.Select(f => f.StartsWith(SanityConstants.ASSET)
+            ? $"{SanityConstants.ASSET}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {JoinComma(nestedFields)} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}"
+            : f));
+        return $"{fieldRef}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleListOfSanityImagesCase(string fieldRef, Type imgElementType, int nestingLevel, int maxNestingLevel)
     {
         var fields = GetPropertyProjectionList(imgElementType, nestingLevel, maxNestingLevel);
-        var projectedFields = fields.Select(f => f.StartsWith(SanityConstants.ASSET) ? SanityConstants.ASSET + SanityConstants.DEREFERENCING_OPERATOR + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + SanityConstants.CLOSE_BRACE : f);
+        var projectedFields = fields.Select(f => f.StartsWith(SanityConstants.ASSET)
+            ? $"{SanityConstants.ASSET}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}"
+            : f);
         var fieldList = JoinComma(projectedFields);
         var indicator = fieldRef.Contains(SanityConstants.ARRAY_INDICATOR) ? string.Empty : SanityConstants.ARRAY_INDICATOR;
         var filter = fieldRef.Contains(SanityConstants.DEFINED) ? string.Empty : SanityConstants.ARRAY_FILTER;
-        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
+        return $"{fieldRef}{indicator}{filter}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE}";
     }
 
     private static string HandleGenericObjectCase(string fieldRef, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit)
@@ -86,18 +88,39 @@ internal static class SanityQueryBuilderHelper
         if (targetType.IsSimpleType()) return $"{fieldRef}{suffix}";
 
         var fields = GetPropertyProjectionList(targetType, nestingLevel, maxNestingLevel);
+        var fieldList = JoinComma(fields);
 
-        if (fields.Count <= 0)
+        if (isExplicit && (targetType == typeof(object) || IsSanityReferenceType(targetType)))
         {
-            if (isExplicit) return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
+            var sanityType = GetSanityType(targetType);
+            var cond = sanityType == null || sanityType == "reference" ? string.Empty : $"{SanityConstants.TYPE} {SanityConstants.EQUALS} {SanityConstants.STRING_DELIMITER}{sanityType}{SanityConstants.STRING_DELIMITER} {SanityConstants.ARROW} ";
 
-            return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{SanityConstants.SPREAD_OPERATOR}{SanityConstants.CLOSE_BRACE}";
+            if (string.IsNullOrEmpty(cond))
+                return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}";
+
+            return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE} {SanityConstants.SPREAD_OPERATOR}{SanityConstants.COMMA} {cond}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE}{SanityConstants.COMMA} {SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE} {SanityConstants.CLOSE_BRACE}";
         }
 
-        var fieldList = JoinComma(fields);
-        if (isExplicit) return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.COMMA}{SanityConstants.DEREFERENCING_SWITCH}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}{SanityConstants.CLOSE_BRACE}";
+        return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE} {fieldList} {SanityConstants.CLOSE_BRACE}";
+    }
 
-        return $"{fieldRef}{suffix}{SanityConstants.OPEN_BRACE}{fieldList}{SanityConstants.CLOSE_BRACE}";
+    private static string? GetSanityType(Type type)
+    {
+        if (type == typeof(object)) return null;
+        try
+        {
+            var property = type.GetProperty("SanityType") ?? type.GetProperty("Type");
+            if (property == null) return null;
+
+            if (type.GetConstructor(Type.EmptyTypes) == null) return null;
+
+            var instance = Activator.CreateInstance(type);
+            return property.GetValue(instance)?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static List<string> GetPropertyProjectionList(Type type, int nestingLevel, int maxNestingLevel)
@@ -170,12 +193,10 @@ internal static class SanityQueryBuilderHelper
         // Only complex classes (non-string) need further processing
         if (!prop.PropertyType.IsClass || prop.PropertyType == typeof(string)) return false;
 
-        // Skip auto-expansion for Sanity references and images as they involve dereferencing, 
-        // which should be controlled by [Include] or explicit .Include()
-        if (IsSanityReferenceType(prop.PropertyType) || IsListOfSanityReference(prop.PropertyType, out _))
-            return false;
-
-        if (HasSanityImageAsset(prop.PropertyType.GetProperties(), out _) || IsListOfSanityImages(prop.PropertyType, out _))
+        // Only skip auto-expansion for GENERIC Sanity references as they involve dereferencing to another type,
+        // which should be controlled by [Include] or explicit .Include().
+        // DocumentReference (non-generic) is safe to auto-expand as it only contains basic reference fields.
+        if (prop.PropertyType.IsGenericType && (prop.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>) || IsListOfSanityReference(prop.PropertyType, out _)))
             return false;
 
         return true;
@@ -196,7 +217,58 @@ internal static class SanityQueryBuilderHelper
                 var matches = FindAllChildObjects(obj, part);
                 if (matches.Count > 0)
                 {
-                    nextObjects.AddRange(matches);
+                    // Check if part is filtered, e.g. topic[_type == "topicObject"]
+                    var untokenizedPart = GroqJsonHelper.Untokenize(part);
+                    var openBrkt = untokenizedPart.IndexOf(SanityConstants.CHAR_OPEN_BRACKET);
+                    var closeBrkt = untokenizedPart.IndexOf(SanityConstants.CHAR_CLOSE_BRACKET);
+
+                    if (openBrkt >= 0 && closeBrkt > openBrkt + 1)
+                    {
+                        var filter = untokenizedPart.Substring(openBrkt + 1, closeBrkt - openBrkt - 1);
+                        var normalizedFilter = filter.Replace(SanityConstants.STRING_DELIMITER, SanityConstants.SINGLE_QUOTE).Replace(" ", "");
+                        var condKey = normalizedFilter + SanityConstants.SPACE + SanityConstants.ARROW;
+
+                        // If it's a reference filter, we should use the dereference switch if either:
+                        // 1. The part itself contains a dereference (e.g. "topic[_type == 'reference']->")
+                        // 2. The NEXT part is a dereference operator
+                        if (normalizedFilter.Contains("reference") &&
+                            (untokenizedPart.Contains(SanityConstants.DEREFERENCING_OPERATOR) ||
+                             (i + 1 < parts.Count && parts[i + 1] == SanityConstants.DEREFERENCING_OPERATOR)))
+                        {
+                            condKey = SanityConstants.DEREFERENCING_SWITCH;
+
+                            // If we consumed the next '->' part, increment i
+                            if (!untokenizedPart.Contains(SanityConstants.DEREFERENCING_OPERATOR) &&
+                                i + 1 < parts.Count && parts[i + 1] == SanityConstants.DEREFERENCING_OPERATOR)
+                                i++;
+                        }
+
+                        foreach (var match in matches)
+                        {
+                            JObject? condObj = null;
+                            foreach (var p in match.Properties())
+                            {
+                                var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
+                                if (untokenizedP.Replace(" ", "").StartsWith(condKey.Replace(" ", "")))
+                                {
+                                    if (p.Value is JObject co) condObj = co;
+                                    break;
+                                }
+                            }
+
+                            if (condObj == null)
+                            {
+                                condObj = new JObject { [tokens[SanityConstants.SPREAD_OPERATOR]] = true };
+                                match[condKey] = condObj;
+                            }
+
+                            nextObjects.Add(condObj);
+                        }
+                    }
+                    else
+                    {
+                        nextObjects.AddRange(matches);
+                    }
                 }
                 else
                 {
@@ -239,9 +311,7 @@ internal static class SanityQueryBuilderHelper
 
     private static bool HasSanityImageAsset(PropertyInfo[] props, out PropertyInfo? assetProp)
     {
-        assetProp = props.FirstOrDefault(p => p.PropertyType.IsGenericType
-                                              && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                              && p.GetJsonProperty() == SanityConstants.ASSET);
+        assetProp = props.FirstOrDefault(p => p.GetJsonProperty() == SanityConstants.ASSET && IsSanityReferenceType(p.PropertyType));
         return assetProp != null;
     }
 
@@ -250,9 +320,7 @@ internal static class SanityQueryBuilderHelper
         elementType = null;
         var type = t.GetInterfaces().FirstOrDefault(i => i.IsGenericType
                                                          && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-                                                         && i.GetGenericArguments()[0].GetProperties().Any(p => p.PropertyType.IsGenericType
-                                                                                                                && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                                                                                                && p.GetJsonProperty() == SanityConstants.ASSET));
+                                                         && i.GetGenericArguments()[0].GetProperties().Any(p => p.GetJsonProperty() == SanityConstants.ASSET && IsSanityReferenceType(p.PropertyType)));
         if (type == null) return false;
 
         elementType = type.GetGenericArguments()[0];
@@ -262,15 +330,30 @@ internal static class SanityQueryBuilderHelper
     private static bool IsListOfSanityReference(Type t, out Type? element)
     {
         element = null;
-        if (!TryGetEnumerableElementType(t, out var et) || et is not { IsGenericType: true } || et.GetGenericTypeDefinition() != typeof(SanityReference<>)) return false;
+        if (!TryGetEnumerableElementType(t, out var et)) return false;
 
-        element = et.GetGenericArguments()[0];
-        return true;
+        if (et == null) return false;
+
+        if (et is { IsGenericType: true } && et.GetGenericTypeDefinition() == typeof(SanityReference<>))
+        {
+            element = et.GetGenericArguments()[0];
+            return true;
+        }
+
+        if (GetSanityType(et) == "reference")
+        {
+            element = et;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsSanityReferenceType(Type t)
     {
-        return t.IsGenericType && t.GetGenericTypeDefinition() == typeof(SanityReference<>);
+        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(SanityReference<>)) return true;
+
+        return GetSanityType(t) == "reference";
     }
 
     public static string JoinComma(IEnumerable<string> parts)
@@ -344,10 +427,7 @@ internal static class SanityQueryBuilderHelper
         if (jObjectProjection == null) return projection;
 
         // Apply includes one by one
-        foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key.Length).ThenBy(k => k.Key))
-        {
-            ApplySingleInclude(jObjectProjection, includeKey, includeValue);
-        }
+        foreach (var (includeKey, includeValue) in includes.OrderBy(k => k.Key.Length).ThenBy(k => k.Key)) ApplySingleInclude(jObjectProjection, includeKey, includeValue);
 
         return GroqJsonHelper.JsonToGroq(jObjectProjection.ToString(Formatting.None));
     }
@@ -379,10 +459,7 @@ internal static class SanityQueryBuilderHelper
         var jObjectInclude = TryDeserializeProjection(includeValue);
         if (jObjectInclude == null) return;
 
-        foreach (var parent in parents)
-        {
-            MergeIncludeProperties(parent, jObjectInclude, lastPart);
-        }
+        foreach (var parent in parents) MergeIncludeProperties(parent, jObjectInclude, lastPart);
     }
 
     private static void MergeIncludeProperties(JObject parent, JObject jObjectInclude, string lastPart)
@@ -417,10 +494,7 @@ internal static class SanityQueryBuilderHelper
                 }
             }
 
-            if (existingKey != null)
-            {
-                EnsureBaseFieldKey(parent, existingKey);
-            }
+            if (existingKey != null) EnsureBaseFieldKey(parent, existingKey);
         }
     }
 
@@ -430,14 +504,12 @@ internal static class SanityQueryBuilderHelper
         JObject? existingObj = null;
 
         foreach (var prop in parent.Properties())
-        {
             if (KeyMatchesPart(prop.Name, baseName))
             {
                 existingKey = prop.Name;
                 if (prop.Value is JObject obj) existingObj = obj;
                 break;
             }
-        }
 
         if (existingObj == null)
         {
@@ -462,16 +534,28 @@ internal static class SanityQueryBuilderHelper
     {
         var filter = untokenizedIncKey.Substring(openBrkt + 1, closeBrkt - openBrkt - 1);
         var normalizedFilter = filter.Replace(SanityConstants.STRING_DELIMITER, SanityConstants.SINGLE_QUOTE).Replace(" ", "");
-        var condKey = normalizedFilter + SanityConstants.ARROW;
+        var condKey = normalizedFilter + SanityConstants.SPACE + SanityConstants.ARROW;
 
         var unwrappedIncValue = UnwrapIncludeValue(incValue, baseName, condKey);
+
+        // Check if this conditional projection is redundant.
+        // Multiple conditional projections mixed with a spread operator can cause parser limitations in some GROQ versions.
+        var tokens = SanityGroqTokenRegistry.Instance.Tokens;
+        var spreadToken = tokens[SanityConstants.SPREAD_OPERATOR];
+        if (unwrappedIncValue is JObject obj && obj.Count == 1 && obj[spreadToken] != null)
+            // Only skip if it's NOT a reference expansion (which needs the dereference switch even if it only has a spread)
+            // AND the parent already has a spread operator.
+            if (!normalizedFilter.Contains(SanityConstants.REFERENCE) && existingObj[spreadToken] != null)
+                return;
 
         string? targetCondKey = null;
         foreach (var p in existingObj.Properties())
         {
             var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
-            if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
+            // Match the filter part exactly
+            if (untokenizedP.StartsWith(normalizedFilter) && untokenizedP.Contains(SanityConstants.ARROW))
             {
+                // It's a conditional projection for the same filter
                 targetCondKey = p.Name;
                 break;
             }
@@ -483,7 +567,11 @@ internal static class SanityQueryBuilderHelper
         }
         else
         {
-            existingObj[condKey] = unwrappedIncValue;
+            // If it's a reference filter, ensure we use the dereference switch pattern if the include value suggests it
+            var finalKey = condKey;
+            if (normalizedFilter.Contains("reference") && untokenizedIncKey.Contains(SanityConstants.DEREFERENCING_OPERATOR)) finalKey = SanityConstants.DEREFERENCING_SWITCH;
+
+            existingObj[finalKey] = unwrappedIncValue;
         }
     }
 
@@ -491,27 +579,27 @@ internal static class SanityQueryBuilderHelper
     {
         if (incValue is not JObject incValueObj) return incValue;
 
-        JToken current = incValue;
+        var current = incValue;
 
         // Handle alias
         foreach (var p in incValueObj.Properties())
-        {
             if (KeyMatchesPart(p.Name, baseName))
             {
                 current = p.Value;
                 break;
             }
-        }
 
         // Handle deref switch unwrap
         if (current is JObject currentObj)
         {
+            var normalizedCond = condKey.Replace(" ", "");
             foreach (var p in currentObj.Properties())
             {
                 var untokenizedP = GroqJsonHelper.Untokenize(p.Name);
-                if (untokenizedP == condKey || (untokenizedP.StartsWith(condKey) && (untokenizedP.EndsWith(SanityConstants.DEREFERENCING_OPERATOR) || untokenizedP == SanityConstants.DEREFERENCING_SWITCH)))
+                if (untokenizedP.Contains(SanityConstants.ARROW))
                 {
-                    return p.Value;
+                    var normalizedP = untokenizedP.Replace(" ", "");
+                    if (normalizedP.StartsWith(normalizedCond)) return p.Value;
                 }
             }
         }

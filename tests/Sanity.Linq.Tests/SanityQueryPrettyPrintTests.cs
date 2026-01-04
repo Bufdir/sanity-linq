@@ -80,8 +80,8 @@ public class SanityQueryPrettyPrintTests
     }
 
     [Theory]
-    [InlineData("*[_type == \"movie\"]{...}", "*[_type == \"movie\"]{...}")]
-    [InlineData("*[_type == \"movie\"]{  ...  }", "*[_type == \"movie\"]{...}")]
+    [InlineData("*[_type == \"movie\"]{...}", "*[_type == \"movie\"]{ ... }")]
+    [InlineData("*[_type == \"movie\"]{  ...  }", "*[_type == \"movie\"]{ ... }")]
     [InlineData("*[_type == \"movie\"]{title, ...}", "*[_type == \"movie\"]{\n  title,\n  ...\n}")]
     public void PrettyPrintQuery_Handles_SpreadOperator(string input, string expected)
     {

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.QueryProvider;
 using Xunit;
@@ -22,17 +23,12 @@ public class SanityExpressionParserTests
         return new SanityDataContext(options);
     }
 
-    private sealed class MyDoc : SanityDocument
-    {
-        public string? Title { get; set; }
-    }
-
     [Fact]
     public void GetSanityQuery_ConstructsParserAndBuildsQuery_WithTypeConstraintAndPredicate()
     {
         // Arrange
         var context = CreateContext();
-        var set = new SanityDocumentSet<MyDoc>(context, maxNestingLevel: 3);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
 
         // Compose a simple LINQ expression: ds.Where(d => d.Title == "Hello")
         var queryable = set.Where(d => d.Title == "Hello");
@@ -57,16 +53,16 @@ public class SanityExpressionParserTests
         // Arrange
         var context = CreateContext();
         var set = new SanityDocumentSet<IncludeDoc>(context, 3);
-        
+
         // Include(d => d.Refs.SelectMany(r => r))
-        var queryable = SanityDocumentSetExtensions.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(set, d => d.Refs!.SelectMany(r => new[] { r }));
+        var queryable = set.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(d => d.Refs!.SelectMany(r => new[] { r }));
 
         // Act
-        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+        var groq = queryable.GetSanityQuery();
 
         // Assert
         Assert.Contains("refs[][defined(@)]", groq);
-        Assert.Contains("_type=='reference'=>@->", groq);
+        Assert.Contains("_type == \"reference\" => @->", groq);
     }
 
     [Fact]
@@ -75,16 +71,16 @@ public class SanityExpressionParserTests
         // Arrange
         var context = CreateContext();
         var set = new SanityDocumentSet<IncludeDoc>(context, 3);
-        
+
         // Include(d => d.Refs.OfType<SanityReference<IncludeDoc>>())
-        var queryable = SanityDocumentSetExtensions.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(set, d => d.Refs!.OfType<SanityReference<IncludeDoc>>());
+        var queryable = set.Include<IncludeDoc, IEnumerable<SanityReference<IncludeDoc>>>(d => d.Refs!.OfType<SanityReference<IncludeDoc>>());
 
         // Act
-        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+        var groq = queryable.GetSanityQuery();
 
         // Assert
         Assert.Contains("refs[][defined(@)]", groq);
-        Assert.Contains("_type=='reference'=>@->", groq);
+        Assert.Contains("_type == \"reference\" => @->", groq);
     }
 
     [Fact]
@@ -104,7 +100,7 @@ public class SanityExpressionParserTests
         // Assert
         // The constraint should appear only once.
         // "title match \"A*\""
-        var matches = System.Text.RegularExpressions.Regex.Matches(groq, "title match \"A\\*\"");
+        var matches = Regex.Matches(groq, "title match \"A\\*\"");
         Assert.Single(matches);
     }
 
@@ -117,7 +113,7 @@ public class SanityExpressionParserTests
 
         // Act
         var queryable = set.Include(d => d.Refs).Include(d => d.Title);
-        var groq = SanityDocumentSetExtensions.GetSanityQuery<IncludeDoc>(queryable);
+        var groq = queryable.GetSanityQuery();
 
         // Assert
         Assert.Contains("refs", groq);
@@ -129,15 +125,15 @@ public class SanityExpressionParserTests
     {
         var context = CreateContext();
         var set = new SanityDocumentSet<MyDoc>(context, 3);
-        
+
         var queryable = set.Where(d => d.Title == "A" || (d.Title != null && d.Title.StartsWith("B")))
             .OrderByDescending(d => d.Title)
             .Take(10)
             .Skip(5);
-        
+
         var provider = (SanityQueryProvider)queryable.Provider;
         var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
-        
+
         Assert.Contains("_type == \"myDoc\"", groq);
         Assert.Contains("title == \"A\" || (defined(title) && title != null) && title match \"B*\"", groq);
         Assert.Contains("| order(title desc)", groq);
@@ -149,11 +145,11 @@ public class SanityExpressionParserTests
     {
         var context = CreateContext();
         var set = new SanityDocumentSet<MyDoc>(context, 3);
-        
+
         var queryable = set.Where(d => d.Title == null);
         var provider = (SanityQueryProvider)queryable.Provider;
         var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
-        
+
         // Expected: (!(defined(title)) || title == null)
         Assert.Contains("!(defined(title))", groq);
         Assert.Contains("title == null", groq);
@@ -164,14 +160,19 @@ public class SanityExpressionParserTests
     {
         var context = CreateContext();
         var set = new SanityDocumentSet<MyDoc>(context, 3);
-        
+
         var queryable = set.Where(d => d.Title != null);
         var provider = (SanityQueryProvider)queryable.Provider;
         var groq = provider.GetSanityQuery<IEnumerable<MyDoc>>(queryable.Expression);
-        
+
         // Expected: (defined(title) && title != null)
         Assert.Contains("defined(title)", groq);
         Assert.Contains("title != null", groq);
+    }
+
+    private sealed class MyDoc : SanityDocument
+    {
+        public string? Title { get; set; }
     }
 
     private sealed class IncludeDoc : SanityDocument

@@ -49,7 +49,7 @@ public static class SanityQueryFormatter
 
         private void UpdateQuoteState(char c)
         {
-            if (c != SanityConstants.CHAR_QUOTE && c != SanityConstants.CHAR_SINGLE_QUOTE || (_currentIndex != 0 && query[_currentIndex - 1] == SanityConstants.CHAR_BACKSLASH)) return;
+            if ((c != SanityConstants.CHAR_QUOTE && c != SanityConstants.CHAR_SINGLE_QUOTE) || (_currentIndex != 0 && query[_currentIndex - 1] == SanityConstants.CHAR_BACKSLASH)) return;
 
             if (!_inQuotes)
             {
@@ -119,7 +119,7 @@ public static class SanityQueryFormatter
             if (afterSpread >= query.Length || query[afterSpread] != SanityConstants.CHAR_CLOSE_BRACE) return false;
 
             NormalizeSpace();
-            _sb.Append(SanityConstants.CHAR_OPEN_BRACE).Append(SanityConstants.SPREAD_OPERATOR).Append(SanityConstants.CHAR_CLOSE_BRACE);
+            _sb.Append(SanityConstants.CHAR_OPEN_BRACE).Append(SanityConstants.SPACE).Append(SanityConstants.SPREAD_OPERATOR).Append(SanityConstants.SPACE).Append(SanityConstants.CHAR_CLOSE_BRACE);
             _currentIndex = afterSpread;
             return true;
         }

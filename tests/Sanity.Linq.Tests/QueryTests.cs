@@ -1,11 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Sanity.Linq.CommonTypes;
-using Sanity.Linq.Demo.Model;
-using Xunit;
-
 namespace Sanity.Linq.Tests;
 
 public class QueryTests : TestBase

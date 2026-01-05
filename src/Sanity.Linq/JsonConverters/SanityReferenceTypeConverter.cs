@@ -14,6 +14,7 @@
 //  along with this program.
 
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.QueryProvider;
 
 namespace Sanity.Linq.JsonConverters;
 
@@ -21,37 +22,40 @@ public class SanityReferenceTypeConverter : JsonConverter
 {
     public override bool CanConvert(Type objectType)
     {
-        return (objectType.IsGenericType && objectType.GetGenericTypeDefinition() == typeof(SanityReference<>));
+        return objectType.IsGenericType && objectType.GetGenericTypeDefinition() == typeof(SanityReference<>);
     }
 
     public override object? ReadJson(JsonReader reader, Type type, object? existingValue, JsonSerializer serializer)
     {
         var elemType = type.GetGenericArguments()[0];
-        if (serializer.Deserialize(reader) is not JObject obj)
-        {
-            return null;
-        }
+        if (serializer.Deserialize(reader) is not JObject obj) return null;
 
-        if (obj.GetValue("_ref") != null)
-        {
-            // Normal reference
-            return obj.ToObject(type);
-        }
+        var res = (SanityObject)Activator.CreateInstance(type)!;
 
-        var res = Activator.CreateInstance(type);
-        var refProp = type.GetProperty(nameof(SanityReference<>.Ref));
-        var typeProp = type.GetProperty(nameof(SanityReference<>.SanityType));
-        var keyProp = type.GetProperty(nameof(SanityReference<>.SanityKey));
-        var weakProp = type.GetProperty(nameof(SanityReference<>.Weak));
-        var valueProp = type.GetProperty(nameof(SanityReference<>.Value));
+        var refVal = obj.GetValue("_ref")?.ToString() ?? obj.GetValue("_id")?.ToString();
+        var typeVal = obj.GetValue("_type")?.ToString();
+        var keyVal = obj.GetValue("_key")?.ToString();
 
-        if (refProp != null) refProp.SetValue(res, obj.GetValue("_id")?.ToString());
-        if (typeProp != null) typeProp.SetValue(res, "reference");
-        if (keyProp != null) keyProp.SetValue(res, obj.GetValue("_key"));
-        if (weakProp != null) weakProp.SetValue(res, obj.GetValue("_weak"));
-        if (valueProp != null) valueProp.SetValue(res, serializer.Deserialize(new StringReader(obj.ToString()), elemType));
+        type.GetProperty(nameof(SanityReference<>.Ref))?.SetValue(res, refVal);
+        type.GetProperty(nameof(SanityReference<>.SanityType))?.SetValue(res, typeVal);
+        type.GetProperty(nameof(SanityReference<>.SanityKey))?.SetValue(res, keyVal);
+        type.GetProperty(nameof(SanityReference<>.Weak))?.SetValue(res, obj.GetValue("_weak")?.ToObject<bool?>());
+
+        var derefToken = obj.Property(SanityConstants.DEREFERENCING_SWITCH)?.Value ??
+                         obj.Property(SanityConstants.DEREFERENCING_OPERATOR)?.Value ??
+                         obj.Properties().FirstOrDefault(p => p.Name.EndsWith("->"))?.Value;
+
+        if (derefToken is JObject derefObj)
+            foreach (var prop in derefObj.Properties())
+                obj[prop.Name] = prop.Value;
+
+        // Decide if we should populate Value
+        if (!IsDereferenced(obj)) return res;
+
+        var val = obj.ToObject(elemType, serializer);
+        if (val is SanityDocument doc && string.IsNullOrEmpty(doc.Id)) doc.Id = (obj.GetValue("_id")?.ToString() ?? refVal ?? keyVal)!;
+        type.GetProperty(nameof(SanityReference<>.Value))?.SetValue(res, val);
         return res;
-        // Unable to deserialize
     }
 
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
@@ -60,7 +64,7 @@ public class SanityReferenceTypeConverter : JsonConverter
         {
             var type = value.GetType();
 
-            //Get reference from object
+            //Get reference from an object
             var refProp = type.GetProperty("Ref");
             var valRef = refProp != null ? refProp.GetValue(value) as string : null;
 
@@ -72,17 +76,14 @@ public class SanityReferenceTypeConverter : JsonConverter
                 if (propValue != null && valValue != null)
                 {
                     var valType = propValue.PropertyType;
-                    var idProp = valType.GetProperties().FirstOrDefault(p => p.Name.ToLower() == "_id" || ((p.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() as JsonPropertyAttribute)?.PropertyName?.Equals("_id")).GetValueOrDefault());
-                    if (idProp != null)
-                    {
-                        valRef = idProp.GetValue(valValue) as string;
-                    }
+                    var idProp = valType.GetProperties().FirstOrDefault(p => p.GetJsonProperty() == "_id");
+                    if (idProp != null) valRef = idProp.GetValue(valValue) as string;
                 }
             }
 
             // Get _key property (required for arrays in sanity editor)
-            var keyProp = type.GetProperties().FirstOrDefault(p => p.Name.ToLower() == "_key" || ((p.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() as JsonPropertyAttribute)?.PropertyName?.Equals("_key")).GetValueOrDefault());
-            var weakProp = type.GetProperties().FirstOrDefault(p => p.Name.ToLower() == "_weak" || ((p.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() as JsonPropertyAttribute)?.PropertyName?.Equals("_weak")).GetValueOrDefault());
+            var keyProp = type.GetProperties().FirstOrDefault(p => p.GetJsonProperty() == "_key");
+            var weakProp = type.GetProperties().FirstOrDefault(p => p.GetJsonProperty() == "_weak");
             var valKey = keyProp != null ? keyProp.GetValue(value) as string : null;
             if (string.IsNullOrEmpty(valKey)) valKey = Guid.NewGuid().ToString();
             var valWeak = weakProp != null ? weakProp.GetValue(value) as bool? : null;
@@ -93,6 +94,15 @@ public class SanityReferenceTypeConverter : JsonConverter
                 return;
             }
         }
+
         serializer.Serialize(writer, null);
+    }
+
+    private static bool IsDereferenced(JObject obj)
+    {
+        return obj.Properties().Any(p =>
+            p.Name != "_ref" && p.Name != "_type" && p.Name != "_key" && p.Name != "_weak" && p.Name != "_rev" && p.Name != "_id"
+            && p.Name != SanityConstants.DEREFERENCING_SWITCH && p.Name != SanityConstants.DEREFERENCING_OPERATOR
+            && !p.Name.EndsWith("->"));
     }
 }

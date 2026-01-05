@@ -1,7 +1,10 @@
-﻿using System;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using Sanity.Linq.CommonTypes;
+using Sanity.Linq.QueryProvider;
 using Xunit;
 
 namespace Sanity.Linq.Tests;
@@ -35,7 +38,8 @@ public class SanityQueryBuilderTests
 
         // Should start with star selection and contain expanded include for author
         Assert.StartsWith("*{", result);
-        Assert.Contains("author->", result);
+        Assert.Contains("author", result);
+        Assert.Contains("_type == \"reference\" => @->", result);
         // Should contain ordering and slice [2..4]
         Assert.Contains("| order(title asc)", result);
         Assert.EndsWith(" [2..4]", result);
@@ -46,6 +50,7 @@ public class SanityQueryBuilderTests
     {
         var builder = CreateBuilder();
         var t = builder.GetType();
+        var helperType = typeof(SanityQueryBuilderHelper);
 
         // Set a simple projection where include will expand
         t.GetProperty("Projection")!.SetValue(builder, "author");
@@ -59,11 +64,23 @@ public class SanityQueryBuilderTests
             { "author", CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>)) }
         };
 
-        // Invoke private ExpandIncludesInProjection via reflection
-        var mi = t.GetMethod("ExpandIncludesInProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var expanded = (string)mi.Invoke(builder, new object[] { "author", paramIncludes })!;
+        // Invoke private ExpandIncludesInProjection via reflection from Helper
+        var mi = helperType.GetMethod("ExpandIncludesInProjection", BindingFlags.Public | BindingFlags.Static)!;
+        var expanded = (string)mi.Invoke(null, new object[] { "author", paramIncludes })!;
 
-        Assert.Contains("author->", expanded);
+        Assert.Contains("author", expanded);
+        Assert.Contains("_type == \"reference\" => @->", expanded);
+    }
+
+    [Fact]
+    public void GroqToJson_ShouldPreserveSpacesInStrings()
+    {
+        // This simulates a projection that might contain a string with a space
+        var groq = "title == \"John Doe\"";
+        var json = GroqJsonHelper.GroqToJson(groq);
+        var finalGroq = GroqJsonHelper.JsonToGroq(json);
+
+        Assert.Equal("title == \"John Doe\"", finalGroq);
     }
 
     [Fact]
@@ -81,28 +98,186 @@ public class SanityQueryBuilderTests
     {
         var proj = CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>));
         // Note: formatting has a space after the opening brace in this case
-        Assert.Equal("author->{ ... }", proj);
+        Assert.Contains("author", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_Reference_UsesDereferencingSwitch()
+    {
+        var proj = CallGetJoinProjection("author", "author", typeof(SanityReference<Simple>));
+
+        // Expected format: author{...,_type=='reference'=>@->{...}}
+        Assert.Contains("author{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+        // It should contain the fields (or spread) twice, once for the reference itself and once for the dereferenced object
+        Assert.Contains("...", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_IEnumerableReference_UsesDereferencingSwitchAndDefinedCheck()
+    {
+        var proj = CallGetJoinProjection("authors", "authors", typeof(List<SanityReference<Simple>>));
+
+        // Expected format: authors[][ defined(@) ]{...,_type=='reference'=>@->{...}}
+        Assert.Contains("authors[][ defined(@) ]", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_ImageAsset_HandlesDereferencedAsset()
+    {
+        var proj = CallGetJoinProjection("image", "image", typeof(Image));
+
+        // Expected to contain asset { ..., _type == 'reference' => @-> { ... } }
+        Assert.Contains("asset{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+        Assert.Contains("image{", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_PropertyToSanityReference_HandlesDereferencedProperty()
+    {
+        var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRef));
+
+        // Should contain the reference field with dereferencing switch
+        Assert.Contains("myRef{", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void GetJoinProjection_PropertyToListOfSanityReference_HandlesDereferencedProperty()
+    {
+        var proj = CallGetJoinProjection("prop", "prop", typeof(PropertyWithRefList));
+
+        // Should contain the reference field with dereferencing switch
+        Assert.Contains("myRefs[][ defined(@) ]", proj);
+        Assert.Contains("_type=='reference'=>@->", proj);
+    }
+
+    [Fact]
+    public void AddProjection_ChainsProjections()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.AddProjection("field1");
+        builder.AddProjection("field2");
+        Assert.Equal((string)"field1.field2", builder.Projection);
+
+        builder.Projection = string.Empty;
+        builder.AddProjection("{a}");
+        builder.AddProjection("{b}");
+        Assert.Equal((string)"{a} {b}", builder.Projection);
+    }
+
+    [Fact]
+    public void AppendProjection_WithAggregate_UsesDotNotation()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.AggregateFunction = "count";
+        var sb = new StringBuilder();
+
+        var t = builder.GetType();
+        var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        mi.Invoke(builder, [sb, "title"]);
+
+        Assert.Equal((string)".title", sb.ToString());
+    }
+
+    [Fact]
+    public void AppendProjection_Flattening_WrapsWithSpread()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.FlattenProjection = true;
+        var sb = new StringBuilder();
+
+        var t = builder.GetType();
+        var mi = t.GetMethod("AppendProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        mi.Invoke(builder, [sb, "title, author"]);
+
+        Assert.Contains(" {...title, author}", sb.ToString());
+    }
+
+    [Fact]
+    public void GetPropertyProjectionList_IsCached()
+    {
+        var t = typeof(SanityQueryBuilder);
+        var mi = t.GetMethod("GetPropertyProjectionList", BindingFlags.Public | BindingFlags.Static)!;
+
+        // Initial call
+        var first = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
+
+        // Second call should come from cache (we can't easily prove it's from cache without reflection on the private field, 
+        // but we can at least ensure it returns the same content)
+        var second = (List<string>)mi.Invoke(null, [typeof(Simple), 0, 2])!;
+
+        Assert.Equal(first.Count, second.Count);
+        Assert.Equal(first[0], second[0]);
+
+        // Reflection to check cache
+        var cacheInstance = ProjectionCache.Instance;
+        var cacheField = typeof(ProjectionCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var cacheDict = (ICollection)cacheField.GetValue(cacheInstance)!;
+        Assert.True(cacheDict.Count > 0);
+    }
+
+    [Fact]
+    public void DocTypeCache_IsCached()
+    {
+        var builder = (SanityQueryBuilder)CreateBuilder();
+        builder.DocType = typeof(AssetDoc);
+
+        var t = builder.GetType();
+        var mi = t.GetMethod("AddDocTypeConstraintIfAny", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        // Initial call
+        mi.Invoke(builder, null);
+
+        // Reflection to check cache
+        var cacheInstance = DocTypeCache.Instance;
+        var cacheField = typeof(DocTypeCache).GetField("_cache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var cacheDict = (ICollection)cacheField.GetValue(cacheInstance)!;
+        Assert.True(cacheDict.Count > 0);
     }
 
     private static string CallGetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel = 0, int maxNestingLevel = 2)
     {
         var t = GetBuilderType();
         var mi = t.GetMethod("GetJoinProjection", BindingFlags.Public | BindingFlags.Static)!;
-        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel])!;
+        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, false])!;
     }
 
     private static object CreateBuilder()
     {
         var t = GetBuilderType();
-        return Activator.CreateInstance(t, nonPublic: true)!;
+        return Activator.CreateInstance(t, true)!;
     }
 
     private static Type GetBuilderType()
     {
         var asm = typeof(SanityClient).Assembly;
-        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", throwOnError: true)!;
+        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", true)!;
     }
 
-    private class Simple
-    { }
+    public class Simple
+    {
+    }
+
+    public class AssetDoc : SanityDocument
+    {
+    }
+
+    public class Image
+    {
+        [Include] public SanityReference<AssetDoc>? Asset { get; set; }
+    }
+
+    public class PropertyWithRef
+    {
+        [Include] public SanityReference<Simple>? MyRef { get; set; }
+    }
+
+    public class PropertyWithRefList
+    {
+        [Include] public List<SanityReference<Simple>>? MyRefs { get; set; }
+    }
 }

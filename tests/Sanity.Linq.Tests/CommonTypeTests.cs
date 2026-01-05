@@ -30,6 +30,7 @@ public class CommonTypeTest : TestBase
         // Retrieve newly created page
         page = await sanity.DocumentSet<Page>().GetAsync(page.Id);
 
+        Assert.NotNull(page);
         var enTitle = page.Title.Get("en");
         var noTitle = page.Title.Get("no");
 
@@ -60,6 +61,7 @@ public class CommonTypeTest : TestBase
         // Retrieve newly created page
         page = await sanity.DocumentSet<Page>().GetAsync(page.Id);
 
+        Assert.NotNull(page);
         var enOptions = page.Options.Get("en");
         var noOptions = page.Options.Get("no");
 

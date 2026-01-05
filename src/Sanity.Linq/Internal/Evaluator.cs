@@ -5,7 +5,7 @@ namespace Sanity.Linq.Internal;
 internal static class Evaluator
 {
     /// <summary>
-    /// Performs evaluation & replacement of independent sub-trees
+    /// Performs evaluation and replacement of independent subtrees
     /// </summary>
     /// <param name="expression">The root of the expression tree.</param>
     /// <param name="fnCanBeEvaluated">A function that decides whether a given expression node can be part of the local function.</param>
@@ -19,7 +19,7 @@ internal static class Evaluator
     /// Performs evaluation & replacement of independent sub-trees
     /// </summary>
     /// <param name="expression">The root of the expression tree.</param>
-    /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
+    /// <returns>A new tree with subtrees evaluated and replaced.</returns>
     public static Expression PartialEval(Expression expression)
     {
         return PartialEval(expression, CanBeEvaluatedLocally);
@@ -27,7 +27,51 @@ internal static class Evaluator
 
     private static bool CanBeEvaluatedLocally(Expression expression)
     {
-        return expression.NodeType != ExpressionType.Parameter;
+        if (expression.NodeType == ExpressionType.Parameter)
+        {
+            return false;
+        }
+
+        if (expression is ConstantExpression)
+        {
+            return true;
+        }
+
+        if (expression is MethodCallExpression m)
+        {
+            var declaringType = m.Method.DeclaringType;
+            if (declaringType == typeof(Queryable) ||
+                (declaringType != null && (declaringType.Name == "SanityDocumentSetExtensions" ||
+                                           typeof(SanityDocumentSet).IsAssignableFrom(declaringType))))
+            {
+                return false;
+            }
+        }
+
+        // Check if expression or its children depend on a ParameterExpression
+        return !DependsOnParameter(expression);
+    }
+
+    private static bool DependsOnParameter(Expression expression)
+    {
+        var visitor = new ParameterFinder();
+        visitor.Visit(expression);
+        return visitor.Found;
+    }
+
+    private class ParameterFinder : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        public override Expression? Visit(Expression? node)
+        {
+            if (node?.NodeType == ExpressionType.Parameter)
+            {
+                Found = true;
+            }
+
+            return Found ? node : base.Visit(node);
+        }
     }
 
     /// <summary>
@@ -114,9 +158,17 @@ internal static class Evaluator
             {
                 return e;
             }
-            var lambda = Expression.Lambda(e);
-            var fn = lambda.Compile();
-            return Expression.Constant(fn.DynamicInvoke(null), e.Type);
+            try
+            {
+                var lambda = Expression.Lambda(e);
+                var fn = lambda.Compile();
+                var result = fn.DynamicInvoke(null);
+                return Expression.Constant(result, e.Type);
+            }
+            catch
+            {
+                return e;
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
@@ -16,7 +16,7 @@ public class SanityQueryBuilderEdgeCasesTests
         var t = builder.GetType();
 
         t.GetProperty("Skip")!.SetValue(builder, 7);
-        t.GetProperty("Take")!.SetValue(builder, 0);
+        t.GetProperty("Take")!.SetValue(builder, null);
 
         var miBuild = t.GetMethod("Build", BindingFlags.Public | BindingFlags.Instance)!;
         var result = (string)miBuild.Invoke(builder, [false, 2])!;
@@ -44,8 +44,7 @@ public class SanityQueryBuilderEdgeCasesTests
     public void GetJoinProjection_IEnumerable_Of_SanityReference()
     {
         var s = CallGetJoinProjection("refs", "refs", typeof(List<SanityReference<Simple>>));
-        // No spaces are inserted in this case
-        Assert.Equal("refs[]->{...}", s);
+        Assert.Contains("refs[][ defined(@) ]", s);
     }
 
     [Fact]
@@ -75,7 +74,7 @@ public class SanityQueryBuilderEdgeCasesTests
     {
         var t = GetBuilderType();
         var mi = t.GetMethod("GetJoinProjection", BindingFlags.Public | BindingFlags.Static)!;
-        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel])!;
+        return (string)mi.Invoke(null, [sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, false])!;
     }
 
     // Helper: call static GetPropertyProjectionList
@@ -90,18 +89,19 @@ public class SanityQueryBuilderEdgeCasesTests
     private static object CreateBuilder()
     {
         var t = GetBuilderType();
-        return Activator.CreateInstance(t, nonPublic: true)!;
+        return Activator.CreateInstance(t, true)!;
     }
 
     // Helper: get internal builder type
     private static Type GetBuilderType()
     {
         var asm = typeof(SanityClient).Assembly;
-        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", throwOnError: true)!;
+        return asm.GetType("Sanity.Linq.QueryProvider.SanityQueryBuilder", true)!;
     }
 
     private class Simple
-    { }
+    {
+    }
 
     // Use a public helper type to ensure reflection in the library can see its public properties
     // (public members on a non-public declaring type may not be returned by default GetProperties()).

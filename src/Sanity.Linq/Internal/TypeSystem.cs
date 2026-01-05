@@ -15,11 +15,13 @@ internal static class TypeSystem
     // Copyright (c) .NET Foundation. All rights reserved.
     // Source: https://github.com/aspnet/EntityFrameworkCore/blob/dev/src/EFCore/EntityFrameworkQueryableExtensions.cs
     internal static MethodInfo GetMethod(string name, int parameterCount = 0, Func<MethodInfo, bool>? predicate = null)
-        => typeof(Queryable).GetTypeInfo().GetDeclaredMethods(name)
-            .Single(mi => (mi.GetParameters().Length == parameterCount + 1)
-                          && ((predicate == null) || predicate(mi)));
+    {
+        return typeof(Queryable).GetTypeInfo().GetDeclaredMethods(name)
+            .Single(mi => mi.GetParameters().Length == parameterCount + 1
+                          && (predicate == null || predicate(mi)));
+    }
 
-    private static Type? FindIEnumerable(Type seqType)
+    private static Type? FindIEnumerable(Type? seqType)
     {
         if (seqType == null || seqType == typeof(string))
             return null;
@@ -28,32 +30,51 @@ internal static class TypeSystem
             return typeof(IEnumerable<>).MakeGenericType(seqType.GetElementType()!);
 
         if (seqType.IsGenericType)
-        {
             foreach (var arg in seqType.GetGenericArguments())
             {
                 var ienum = typeof(IEnumerable<>).MakeGenericType(arg);
-                if (ienum.IsAssignableFrom(seqType))
-                {
-                    return ienum;
-                }
+                if (ienum.IsAssignableFrom(seqType)) return ienum;
             }
-        }
 
         var ifaces = seqType.GetInterfaces();
         if (ifaces is { Length: > 0 })
-        {
             foreach (var iface in ifaces)
             {
                 var ienum = FindIEnumerable(iface);
                 if (ienum != null) return ienum;
             }
-        }
 
-        if (seqType.BaseType != null && seqType.BaseType != typeof(object))
-        {
-            return FindIEnumerable(seqType.BaseType);
-        }
+        if (seqType.BaseType != null && seqType.BaseType != typeof(object)) return FindIEnumerable(seqType.BaseType);
 
         return null;
+    }
+
+    extension(Type type)
+    {
+        public bool IsSimpleType()
+        {
+            var actualType = Nullable.GetUnderlyingType(type) ?? type;
+            return actualType.IsPrimitive ||
+                   actualType.IsEnum ||
+                   actualType == typeof(string) ||
+                   actualType == typeof(decimal) ||
+                   actualType == typeof(DateTime) ||
+                   actualType == typeof(DateTimeOffset) ||
+                   actualType == typeof(TimeSpan) ||
+                   actualType == typeof(Guid);
+        }
+
+        public bool IsNumericOrBoolType()
+        {
+            var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+            return underlyingType == typeof(int) ||
+                   underlyingType == typeof(long) ||
+                   underlyingType == typeof(double) ||
+                   underlyingType == typeof(float) ||
+                   underlyingType == typeof(short) ||
+                   underlyingType == typeof(byte) ||
+                   underlyingType == typeof(decimal) ||
+                   underlyingType == typeof(bool);
+        }
     }
 }

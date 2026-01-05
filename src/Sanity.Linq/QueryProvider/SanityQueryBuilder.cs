@@ -1,266 +1,94 @@
 ﻿using Sanity.Linq.CommonTypes;
 
+// ReSharper disable MemberCanBePrivate.Global
+
 namespace Sanity.Linq.QueryProvider;
 
 internal sealed class SanityQueryBuilder
 {
-    private readonly Dictionary<string, string> _groqTokens = new()
-    {
-        { SanityConstants.DEREFERENCING_SWITCH, "__0001__" },
-        { SanityConstants.DEREFERENCING_OPERATOR, "__0002__" },
-        { SanityConstants.STRING_DELIMITER, "__0003__" },
-        { SanityConstants.COLON, "__0004__" },
-        { SanityConstants.SPREAD_OPERATOR, "__0005__" },
-        { SanityConstants.ARRAY_INDICATOR, "__0006__" },
-    };
+    public string AggregateFunction { get; set; } = string.Empty;
 
-    public string AggregateFunction { get; set; } = "";
+    public string AggregatePostFix { get; set; } = string.Empty;
 
     public List<string> Constraints { get; } = [];
-
     public Type? DocType { get; set; }
-
+    public bool ExpectsArray { get; set; }
+    public bool FlattenProjection { get; set; }
     public Dictionary<string, string> Includes { get; set; } = new();
-
+    public bool IsSilent { get; set; }
     public List<string> Orderings { get; set; } = [];
-
-    public string Projection { get; set; } = "";
+    public List<string> PostFilters { get; } = [];
+    public string Projection { get; set; } = string.Empty;
 
     public Type? ResultType { get; set; }
-
     public int Skip { get; set; }
+    public int? Take { get; set; }
+    public bool UseCoalesceFallback { get; set; } = true;
 
-    public int Take { get; set; }
-
-    /// <summary>
-    /// Constructs a projection string for a property to be included or joined in a query.
-    /// Handles various property types, including primitive types, strings,
-    /// nested objects, and collections of <see cref="SanityReference{T}"/>.
-    /// </summary>
-    /// <param name="sourceName">The name of the source field in the query.</param>
-    /// <param name="targetName">The name of the target field in the query.</param>
-    /// <param name="propertyType">The type of the property being projected.</param>
-    /// <param name="nestingLevel">The current nesting level of the projection.</param>
-    /// <param name="maxNestingLevel">The maximum allowed nesting level for projections.</param>
-    /// <returns>A string representing the projection for the specified property.</returns>
-    public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel)
+    public static string GetJoinProjection(string sourceName, string targetName, Type propertyType, int nestingLevel, int maxNestingLevel, bool isExplicit = false)
     {
-        // Build field reference (alias if needed)
-        var fieldRef = sourceName;
-        if (sourceName != targetName && !string.IsNullOrEmpty(targetName))
-        {
-            fieldRef = $"\"{targetName}\":{sourceName}";
-        }
-
-        // String or primitive
-        if (propertyType == typeof(string) || propertyType.IsPrimitive)
-        {
-            return fieldRef;
-        }
-
-        // CASE 1: SanityReference<T>
-        if (IsSanityReferenceType(propertyType))
-        {
-            var fields = GetPropertyProjectionList(propertyType.GetGenericArguments()[0], nestingLevel, maxNestingLevel);
-            var fieldList = JoinComma(fields);
-            return $"{fieldRef}->{{ {fieldList} }}";
-        }
-
-        // CASE 2: IEnumerable<SanityReference<T>>
-        if (IsListOfSanityReference(propertyType, out var refElement))
-        {
-            var fields = GetPropertyProjectionList(refElement!, nestingLevel, maxNestingLevel);
-            var fieldList = JoinComma(fields);
-            return $"{fieldRef}[]->{{{fieldList}}}";
-        }
-
-        var nestedProperties = propertyType.GetProperties();
-
-        // CASE 3: Image.Asset
-        if (HasSanityImageAsset(nestedProperties, out var sanityImageAssetProperty))
-        {
-            var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
-            var assetProp = sanityImageAssetProperty!;
-            var nestedFields = GetPropertyProjectionList(assetProp.PropertyType, nestingLevel, maxNestingLevel);
-            var fieldList = fields
-                .Select(f => f.StartsWith("asset")
-                    ? $"asset->{(nestedFields.Count > 0 ? ("{" + JoinComma(nestedFields) + "}") : "")}"
-                    : f)
-                .Aggregate((c, n) => c + "," + n);
-            return $"{fieldRef}{{{fieldList}}}";
-        }
-
-        // CASE 4: Property->SanityReference<T>
-        var nestedSanityReferenceProperty = FindNestedSanityReference(nestedProperties);
-        if (nestedSanityReferenceProperty is { } nsr)
-        {
-            var propertyName = nsr.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName ?? nsr.Name.ToCamelCase();
-            var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
-            var nsrElementType = nsr.PropertyType.GetGenericArguments()[0];
-            var nestedFields = GetPropertyProjectionList(nsrElementType, nestingLevel + 1, maxNestingLevel);
-            var fieldList = fields
-                .Select(f => f == propertyName
-                    ? $"{propertyName}->{(nestedFields.Count > 0 ? ("{" + JoinComma(nestedFields) + "}") : "")}"
-                    : f)
-                .Aggregate((c, n) => c + "," + n);
-            return $"{fieldRef}{{{fieldList}}}";
-        }
-
-        // CASE 5: Property->List<SanityReference<T>>
-        if (FindNestedListOfSanityReference(nestedProperties, out var propertyInfo, out var listElementType))
-        {
-            var listProp = propertyInfo!;
-            var elemType = listElementType!;
-            var propertyName = listProp.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName ?? listProp.Name.ToCamelCase();
-            var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
-            var nestedFields = GetPropertyProjectionList(elemType, nestingLevel + 1, maxNestingLevel);
-            var fieldList = fields
-                .Select(f => f == propertyName
-                    ? $"{propertyName}[]->{(nestedFields.Count > 0 ? ("{" + JoinComma(nestedFields) + "}") : "")}"
-                    : f)
-                .Aggregate((c, n) => c + "," + n);
-            return $"{fieldRef}{{{fieldList}}}";
-        }
-
-        // CASE 6: Array of objects with "asset" field (e.g., images)
-        if (IsListOfSanityImages(propertyType, out var imgElementType))
-        {
-            var fields = GetPropertyProjectionList(imgElementType!, nestingLevel, maxNestingLevel);
-            var fieldList = fields.Select(f => f.StartsWith("asset") ? $"asset->{{{SanityConstants.SPREAD_OPERATOR}}}" : f)
-                                  .Aggregate((c, n) => c + "," + n);
-            return $"{fieldRef}[]{{{fieldList}}}";
-        }
-
-        // CASE 7: Fallback case: not nested / not strongly typed
-        if (TryGetEnumerableElementType(propertyType, out var enumerableType))
-        {
-            var fields = GetPropertyProjectionList(enumerableType!, nestingLevel, maxNestingLevel);
-            if (fields.Count <= 0)
-            {
-                return $"{fieldRef}[]->";
-            }
-
-            var fieldList = JoinComma(fields);
-            return $"{fieldRef}[]{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
-        }
-
-        // Non-enumerable object fallback
-        {
-            var fields = GetPropertyProjectionList(propertyType, nestingLevel, maxNestingLevel);
-            if (fields.Count <= 0)
-            {
-                return $"{fieldRef}{{{SanityConstants.SPREAD_OPERATOR},{SanityConstants.DEREFERENCING_SWITCH + "{" + SanityConstants.SPREAD_OPERATOR + "}"}}}";
-            }
-
-            var fieldList = JoinComma(fields);
-            return $"{fieldRef}{{{fieldList},{SanityConstants.DEREFERENCING_SWITCH + "{" + fieldList + "}"}}}";
-        }
+        return SanityQueryBuilderHelper.GetJoinProjection(sourceName, targetName, propertyType, nestingLevel, maxNestingLevel, isExplicit);
     }
 
-    /// <summary>
-    /// Generates a list of property projections for a given type, considering nesting levels and maximum allowed nesting depth.
-    /// </summary>
-    /// <param name="type">The type for which property projections are to be generated.</param>
-    /// <param name="nestingLevel">The current nesting level in the projection hierarchy.</param>
-    /// <param name="maxNestingLevel">The maximum allowed nesting level for projections.</param>
-    /// <returns>A list of strings representing the property projections for the specified type.</returns>
-    /// <remarks>
-    /// This method recursively processes the properties of the specified type, applying rules for inclusion, 
-    /// handling complex types, collections, and attributes such as <see cref="JsonIgnoreAttribute"/> and <see cref="JsonPropertyAttribute"/>.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown if the <paramref name="type"/> parameter is null.</exception>
     public static List<string> GetPropertyProjectionList(Type type, int nestingLevel, int maxNestingLevel)
     {
-        if (nestingLevel == maxNestingLevel)
+        return SanityQueryBuilderHelper.GetPropertyProjectionList(type, nestingLevel, maxNestingLevel);
+    }
+
+    public void AddConstraint(string constraint)
+    {
+        if (string.IsNullOrWhiteSpace(constraint)) return;
+        if (!Constraints.Contains(constraint)) Constraints.Add(constraint);
+    }
+
+    public void AddOrdering(string ordering)
+    {
+        if (string.IsNullOrWhiteSpace(ordering)) return;
+        if (!Orderings.Contains(ordering)) Orderings.Add(ordering);
+    }
+
+    public void AddPostFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return;
+        if (!PostFilters.Contains(filter)) PostFilters.Add(filter);
+    }
+
+    public void AddProjection(string projection)
+    {
+        if (string.IsNullOrWhiteSpace(projection)) return;
+        if (string.IsNullOrEmpty(Projection))
         {
-            return ["..."];
+            Projection = projection;
+            return;
         }
 
-        // "Include all" primitive types with a simple ...
-        var result = new List<string> { "..." };
-
-        foreach (var prop in type.GetProperties().Where(p => p.CanWrite))
-        {
-            // Skip ignored
-            if (prop.GetCustomAttributes(typeof(JsonIgnoreAttribute), true).Length > 0)
-            {
-                continue;
-            }
-
-            var targetName = (prop.GetCustomAttributes(typeof(JsonPropertyAttribute), true).FirstOrDefault() as JsonPropertyAttribute)?.PropertyName
-                             ?? prop.Name.ToCamelCase();
-            var includeAttr = prop.GetCustomAttributes<IncludeAttribute>(true).FirstOrDefault();
-            var sourceName = !string.IsNullOrEmpty(includeAttr?.FieldName) ? includeAttr.FieldName : targetName;
-            var fieldRef = targetName == sourceName ? sourceName : $"\"{targetName}\": {sourceName}";
-
-            // Explicit include → delegate to GetJoinProjection
-            if (includeAttr != null)
-            {
-                result.Add(GetJoinProjection(sourceName, targetName, prop.PropertyType, nestingLevel + 1, maxNestingLevel));
-                continue;
-            }
-
-            // Only complex classes (non-string) need further processing
-            if (!(prop.PropertyType.IsClass && prop.PropertyType != typeof(string)))
-            {
-                continue;
-            }
-
-            // Handle lists/arrays of complex types
-            if (TryGetEnumerableElementType(prop.PropertyType, out var elementType))
-            {
-                // Avoid recursion for a special case of JObject
-                if (elementType == typeof(JObject))
-                {
-                    continue;
-                }
-
-                var fieldList = GetPropertyProjectionList(elementType!, nestingLevel + 1, maxNestingLevel);
-                var listItemProjection = JoinComma(fieldList);
-                if (listItemProjection != "...")
-                {
-                    result.Add($"{fieldRef}[]{{{listItemProjection}}}");
-                }
-                continue;
-            }
-
-            // JObject special handling: do not expand explicit projection, rely on top-level "..."
-            if (prop.PropertyType == typeof(JObject))
-            {
-                continue;
-            }
-
-            // Object case: recursively add a projection list
-            {
-                var fieldList = GetPropertyProjectionList(prop.PropertyType, nestingLevel + 1, maxNestingLevel);
-                result.Add($"{fieldRef}{{{JoinComma(fieldList)}}}");
-            }
-        }
-
-        return result;
+        if (projection.StartsWith(SanityConstants.OPEN_BRACE))
+            Projection = $"{Projection}{SanityConstants.SPACE}{projection}";
+        else
+            Projection = $"{Projection}{SanityConstants.DOT}{projection}";
     }
 
     /// <summary>
-    /// Constructs a query string based on the current state of the query builder.
+    ///     Constructs a query string based on the current state of the query builder.
     /// </summary>
     /// <param name="includeProjections">
-    /// A boolean value indicating whether to include projections in the query.
+    ///     A boolean value indicating whether to include projections in the query.
     /// </param>
     /// <param name="maxNestingLevel">
-    /// The maximum level of nesting allowed for projections.
+    ///     The maximum level of nesting allowed for projections.
     /// </param>
     /// <returns>
-    /// A string representing the constructed query.
+    ///     A string representing the constructed query.
     /// </returns>
     /// <remarks>
-    /// This method builds the query by combining constraints, projections, orderings, slices, 
-    /// and an optional aggregate function. The resulting query is formatted as a string.
+    ///     This method builds the query by combining constraints, projections, orderings, slices,
+    ///     and an optional aggregate function. The resulting query is formatted as a string.
     /// </remarks>
     public string Build(bool includeProjections, int maxNestingLevel)
     {
         var sb = new StringBuilder();
         // Select all
-        sb.Append("*");
+        sb.Append(SanityConstants.CHAR_STAR);
 
         AddDocTypeConstraintIfAny();
         AppendConstraints(sb);
@@ -271,6 +99,7 @@ internal sealed class SanityQueryBuilder
             AppendProjection(sb, projection);
         }
 
+        AppendPostFilters(sb);
         AppendOrderings(sb);
         AppendSlices(sb);
         WrapWithAggregate(sb);
@@ -278,370 +107,153 @@ internal sealed class SanityQueryBuilder
         return sb.ToString();
     }
 
-    private static void EnsurePath(JObject root, IReadOnlyList<string> parts, Dictionary<string, string> tokens, out JObject parent)
-    {
-        var obj = root;
-        for (var i = 0; i < parts.Count; i++)
-        {
-            var part = parts[i];
-            var isLast = i == parts.Count - 1;
-            if (isLast)
-            {
-                break;
-            }
-
-            if (TryFindChildObject(obj, part, tokens, out var next))
-            {
-                obj = next!;
-                continue;
-            }
-
-            var nextJObject = new JObject();
-            obj[part] = nextJObject;
-            obj = nextJObject;
-        }
-
-        parent = obj;
-    }
-
-    private static bool FindNestedListOfSanityReference(PropertyInfo[] props, out PropertyInfo? prop, out Type? elementType)
-    {
-        prop = props.FirstOrDefault(p => p.PropertyType.GetInterfaces().Any(i => i.IsGenericType
-                                                                                 && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-                                                                                 && i.GetGenericArguments()[0].IsGenericType
-                                                                                 && i.GetGenericArguments()[0].GetGenericTypeDefinition() == typeof(SanityReference<>)));
-        if (prop != null)
-        {
-            var collectionType = prop.PropertyType.GetGenericArguments()[0];
-            elementType = collectionType.GetGenericArguments()[0];
-            return true;
-        }
-        elementType = null;
-        return false;
-    }
-
-    private static PropertyInfo? FindNestedSanityReference(PropertyInfo[] props)
-        => props.FirstOrDefault(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>));
-
-    private static bool HasSanityImageAsset(PropertyInfo[] props, out PropertyInfo? assetProp)
-    {
-        assetProp = props.FirstOrDefault(p => p.PropertyType.IsGenericType
-                                              && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                              && (p.Name.ToLower() == "asset"
-                                                  || ((p.GetCustomAttributes<JsonPropertyAttribute>(true).FirstOrDefault())?.PropertyName?.Equals("asset")).GetValueOrDefault()));
-        return assetProp != null;
-    }
-
-    private static bool IsListOfSanityImages(Type t, out Type? elementType)
-    {
-        elementType = null;
-        var type = t.GetInterfaces().FirstOrDefault(i => i.IsGenericType
-                                                          && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-                                                          && i.GetGenericArguments()[0].GetProperties().Any(p => p.PropertyType.IsGenericType
-                                                              && p.PropertyType.GetGenericTypeDefinition() == typeof(SanityReference<>)
-                                                              && (p.Name.ToLower() == "asset"
-                                                                  || ((p.GetCustomAttributes<JsonPropertyAttribute>(true).FirstOrDefault())?.PropertyName?.Equals("asset")).GetValueOrDefault())));
-        if (type == null)
-        {
-            return false;
-        }
-
-        elementType = type.GetGenericArguments()[0];
-        return true;
-    }
-
-    private static bool IsListOfSanityReference(Type t, out Type? element)
-    {
-        element = null;
-        if (!TryGetEnumerableElementType(t, out var et) || et is not { IsGenericType: true } || et.GetGenericTypeDefinition() != typeof(SanityReference<>))
-        {
-            return false;
-        }
-
-        element = et.GetGenericArguments()[0];
-        return true;
-    }
-
-    private static bool IsSanityReferenceType(Type t) => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(SanityReference<>);
-
-    private static string JoinComma(IEnumerable<string> parts) => string.Join(",", parts);
-
-    private static bool KeyMatchesPart(string key, string part, Dictionary<string, string> tokens)
-    {
-        // Matches: exact key, quoted key, array variant (part[]), or dereferencing (part->)
-        return key == part
-               || key.StartsWith($"{tokens[SanityConstants.STRING_DELIMITER]}{part}{tokens[SanityConstants.STRING_DELIMITER]}")
-               || key.StartsWith(part + tokens[SanityConstants.ARRAY_INDICATOR])
-               || key.StartsWith(part + tokens[SanityConstants.DEREFERENCING_OPERATOR]);
-    }
-
-    private static string[] ParseIncludePath(string includeKey, Dictionary<string, string> tokens)
-    {
-        return includeKey
-            .Replace(SanityConstants.COLON, tokens[SanityConstants.COLON])
-            .Replace(SanityConstants.STRING_DELIMITER, tokens[SanityConstants.STRING_DELIMITER])
-            .Replace(SanityConstants.ARRAY_INDICATOR, tokens[SanityConstants.ARRAY_INDICATOR])
-            .Replace(SanityConstants.DEREFERENCING_SWITCH, tokens[SanityConstants.DEREFERENCING_SWITCH])
-            .Replace(SanityConstants.DEREFERENCING_OPERATOR, ".")
-            .TrimEnd('.')
-            .Split('.');
-    }
-
-    private static void ReplaceFieldWithInclude(JObject parent, string part, JObject includeObject, Dictionary<string, string> tokens)
-    {
-        // Remove previous representations of a field (typically without a projection)
-        var fieldsToReplace = new List<string>();
-        foreach (var property in parent)
-        {
-            if (KeyMatchesPart(property.Key, part, tokens))
-            {
-                fieldsToReplace.Add(property.Key);
-            }
-        }
-        foreach (var key in fieldsToReplace)
-        {
-            parent.Remove(key);
-        }
-
-        // Set field to new projection (match key variant inside the include object)
-        foreach (var include in includeObject)
-        {
-            if (!KeyMatchesPart(include.Key, part, tokens))
-            {
-                continue;
-            }
-
-            parent[include.Key] = include.Value;
-            break;
-        }
-    }
-
-    private static bool TryFindChildObject(JObject current, string part, Dictionary<string, string> tokens, out JObject? next)
-    {
-        foreach (var property in current)
-        {
-            if (!KeyMatchesPart(property.Key, part, tokens))
-            {
-                continue;
-            }
-
-            if (current[property.Key] is not JObject obj)
-            {
-                continue;
-            }
-
-            next = obj;
-            return true;
-        }
-
-        next = null;
-        return false;
-    }
-
-    private static bool TryGetEnumerableElementType(Type t, out Type? elementType)
-    {
-        var type = t.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
-        if (type != null)
-        {
-            elementType = type.GetGenericArguments()[0];
-            return true;
-        }
-        elementType = null;
-        return false;
-    }
-
     private void AddDocTypeConstraintIfAny()
     {
-        if (DocType == null || DocType == typeof(object) || DocType == typeof(SanityDocument))
-        {
-            return;
-        }
+        if (DocType == null || DocType == typeof(object) || DocType == typeof(SanityDocument)) return;
 
-        var rootTypeName = DocType!.GetSanityTypeName();
-        try
+        var rootTypeName = DocTypeCache.Instance.GetOrAdd(DocType, type =>
         {
-            var dummyDoc = Activator.CreateInstance(DocType);
-            var typeName = dummyDoc?.SanityType();
-            if (!string.IsNullOrEmpty(typeName))
+            var name = type.GetSanityTypeName();
+            try
             {
-                rootTypeName = typeName;
+                var dummyDoc = Activator.CreateInstance(type);
+                var typeName = dummyDoc?.SanityType();
+                if (!string.IsNullOrEmpty(typeName)) name = typeName;
             }
-        }
-        catch
-        {
-            // ignored
-        }
+            catch
+            {
+                // ignored
+            }
 
-        Constraints.Insert(0, $"_type == \"{rootTypeName}\"");
+            return name;
+        });
+
+        Constraints.Insert(0, $"{SanityConstants.TYPE}{SanityConstants.SPACE}{SanityConstants.EQUALS}{SanityConstants.SPACE}{SanityConstants.STRING_DELIMITER}{rootTypeName}{SanityConstants.STRING_DELIMITER}");
     }
 
     private void AppendConstraints(StringBuilder sb)
     {
-        if (Constraints.Count <= 0)
+        if (Constraints.Count <= 0) return;
+
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
+        var first = true;
+        foreach (var constraint in Constraints)
         {
-            return;
+            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(constraint).Append(SanityConstants.CHAR_CLOSE_PAREN);
+            first = false;
         }
 
-        sb.Append('[');
-        sb.Append(Constraints.Distinct().Aggregate((c, n) => $"({c}) && ({n})"));
-        sb.Append(']');
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
     private void AppendOrderings(StringBuilder sb)
     {
-        if (Orderings.Count > 0)
+        if (Orderings.Count == 0) return;
+
+        sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.CHAR_PIPE).Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.ORDER).Append(SanityConstants.CHAR_OPEN_PAREN);
+        var first = true;
+        foreach (var ordering in Orderings)
         {
-            sb.Append(" | order(" + Orderings.Aggregate((c, n) => $"{c}, {n}") + ")");
+            if (!first) sb.Append(SanityConstants.CHAR_COMMA).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(ordering);
+            first = false;
         }
+
+        sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
+    }
+
+    private void AppendPostFilters(StringBuilder sb)
+    {
+        if (PostFilters.Count <= 0) return;
+
+        sb.Append(SanityConstants.CHAR_OPEN_BRACKET);
+        var first = true;
+        foreach (var filter in PostFilters)
+        {
+            if (!first) sb.Append(SanityConstants.CHAR_SPACE).Append(SanityConstants.AND).Append(SanityConstants.CHAR_SPACE);
+            sb.Append(SanityConstants.CHAR_OPEN_PAREN).Append(filter).Append(SanityConstants.CHAR_CLOSE_PAREN);
+            first = false;
+        }
+
+        sb.Append(SanityConstants.CHAR_CLOSE_BRACKET);
     }
 
     private void AppendProjection(StringBuilder sb, string projection)
     {
-        if (string.IsNullOrEmpty(projection))
+        if (string.IsNullOrEmpty(projection)) return;
+
+        // Replace @ (parameter reference) with ... (spread operator) for full entity selection
+        var normalized = projection == SanityConstants.AT ? SanityConstants.SPREAD_OPERATOR : projection;
+
+        var expanded = SanityQueryBuilderHelper.ExpandIncludesInProjection(normalized, Includes);
+
+        if (expanded == SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + SanityConstants.CLOSE_BRACE) return; // Don't add an empty projection
+
+        if (expanded.StartsWith(SanityConstants.OPEN_BRACE))
         {
+            if (FlattenProjection && expanded.EndsWith(SanityConstants.CLOSE_BRACE) && !expanded.StartsWith(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR))
+            {
+                sb.Append(SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded.Substring(1));
+                return;
+            }
+
+            sb.Append(expanded);
             return;
         }
 
-        var expanded = ExpandIncludesInProjection(projection, Includes)
-            .Replace($"{{{SanityConstants.SPREAD_OPERATOR}}}", "");
-
-        if (expanded == $"{{{SanityConstants.SPREAD_OPERATOR}}}")
-        {
-            return; // Don't add an empty projection
-        }
-
-        var hasBraces = expanded.StartsWith('{') && expanded.EndsWith('}');
-        if (!hasBraces)
-        {
-            sb.Append(" {");
-            sb.Append(expanded);
-            sb.Append('}');
-        }
+        if ((!string.IsNullOrEmpty(AggregateFunction) || !string.IsNullOrEmpty(AggregatePostFix)) && !expanded.Contains(SanityConstants.CHAR_COMMA))
+            sb.Append(SanityConstants.CHAR_DOT).Append(expanded);
+        else if (FlattenProjection)
+            sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + SanityConstants.SPREAD_OPERATOR + expanded + SanityConstants.CLOSE_BRACE);
         else
-        {
-            sb.Append(expanded);
-        }
+            sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACE + expanded + SanityConstants.CLOSE_BRACE);
     }
 
     private void AppendSlices(StringBuilder sb)
     {
-        if (Take > 0)
+        if (!Take.HasValue)
         {
-            sb.Append(Take == 1 ? $" [{Skip}]" : $" [{Skip}..{Skip + Take - 1}]");
+            if (Skip > 0) sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + int.MaxValue + SanityConstants.CLOSE_BRACKET);
+            return;
         }
-        else if (Skip > 0)
+
+        switch (Take.Value)
         {
-            sb.Append($" [{Skip}..{int.MaxValue}]");
+            case 1:
+                sb.Append(ExpectsArray ? SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + Skip + SanityConstants.CLOSE_BRACKET : SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.CLOSE_BRACKET);
+                break;
+            case 0:
+                sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.INCLUSIVE_RANGE + Skip + SanityConstants.CLOSE_BRACKET);
+                break;
+            default:
+                sb.Append(SanityConstants.SPACE + SanityConstants.OPEN_BRACKET + Skip + SanityConstants.RANGE + (Skip + Take.Value - 1) + SanityConstants.CLOSE_BRACKET);
+                break;
         }
     }
 
-    private string ExpandIncludesInProjection(string projection, Dictionary<string, string> includes)
-    {
-        // Finds and replaces includes in a projection by converting projection (GROQ) to an equivalent JSON representation,
-        // modifying the JSON replacement and then converting back to GROQ.
-        //
-        // The reason for converting to JSON is simply to be able to work with the query in a hierarchical structure.
-        // This could also be done creating some sort of query tree object, which might be a more appropriate / cleaner solution.
-
-        var jsonProjection = GroqToJson($"{{{projection}}}");
-        if (JsonConvert.DeserializeObject(jsonProjection) is not JObject jObjectProjection || includes.Count == 0)
-        {
-            return projection;
-        }
-
-        // Use the includes provided via parameter, not the instance field
-        foreach (var includeKey in includes.Keys.OrderBy(k => k))
-        {
-            var jsonInclude = GroqToJson($"{{{includes[includeKey]}}}");
-            if (JsonConvert.DeserializeObject(jsonInclude) is not JObject jObjectInclude)
-            {
-                continue;
-            }
-
-            var pathParts = ParseIncludePath(includeKey, _groqTokens);
-
-            // Traverse to parent
-            EnsurePath(jObjectProjection, pathParts, _groqTokens, out var parent);
-
-            // Replace or set the last segment
-            var lastPart = pathParts[^1];
-            ReplaceFieldWithInclude(parent, lastPart, jObjectInclude, _groqTokens);
-        }
-
-        // Convert back to JSON
-        jsonProjection = jObjectProjection.ToString(Formatting.None);
-        // Convert JSON back to GROQ query
-        projection = JsonToGroq(jsonProjection);
-
-        return projection;
-    }
-
-    private string GroqToJson(string groq)
-    {
-        var json = groq.Replace(" ", "");
-        foreach (var token in _groqTokens.Keys.OrderBy(k => _groqTokens[k]))
-        {
-            json = json.Replace(token, _groqTokens[token]);
-        }
-        json = json.Replace("{", ":{").TrimStart(':');
-
-        // Replace variable names with valid JSON (e.g., convert myField to "myField": true)
-        var reVariables = new Regex("(,|{)([^\"}:,]+)(,|})");
-        var reMatches = reVariables.Matches(json);
-        while (reMatches.Count > 0)
-        {
-            foreach (Match match in reMatches)
-            {
-                var fieldName = match.Groups[2].Value;
-                var fieldReplacement = $"\"{fieldName}\":true";
-                json = json.Replace(match.Value, match.Value.Replace(fieldName, fieldReplacement));
-            }
-
-            reMatches = reVariables.Matches(json);
-        }
-
-        return json;
-    }
-
-    private string JsonToGroq(string json)
-    {
-        var groq = json
-            .Replace(":{", "{")
-            .Replace(":true", "")
-            .Replace("\"", "");
-        foreach (var token in _groqTokens.Keys)
-        {
-            groq = groq.Replace(_groqTokens[token], token);
-        }
-        return groq;
-    }
 
     private string ResolveProjection(int maxNestingLevel)
     {
-        var projection = Projection;
-
-        if (!string.IsNullOrEmpty(projection))
-        {
-            return projection;
-        }
+        if (!string.IsNullOrEmpty(Projection)) return Projection;
 
         // Joins require an explicit projection
-        var propertyList = GetPropertyProjectionList(ResultType ?? DocType ?? typeof(object), 0, maxNestingLevel);
-        projection = propertyList.Count > 0
-            ? JoinComma(propertyList)
-            : (Includes.Keys.Count > 0 ? Includes.Keys.Aggregate((c, n) => c + "," + n) : "");
+        var propertyList = SanityQueryBuilderHelper.GetPropertyProjectionList(ResultType ?? DocType ?? typeof(object), 0, maxNestingLevel);
+        if (propertyList.Count > 0) return SanityQueryBuilderHelper.JoinComma(propertyList);
 
-        return projection;
+        if (Includes.Keys.Count > 0) return string.Join(SanityConstants.COMMA, Includes.Keys);
+
+        return string.Empty;
     }
 
     private void WrapWithAggregate(StringBuilder sb)
     {
-        if (string.IsNullOrEmpty(AggregateFunction))
+        if (!string.IsNullOrEmpty(AggregateFunction))
         {
-            return;
+            sb.Insert(0, AggregateFunction + SanityConstants.OPEN_PAREN);
+            sb.Append(SanityConstants.CHAR_CLOSE_PAREN);
         }
 
-        sb.Insert(0, AggregateFunction + "(");
-        sb.Append(')');
+        if (!string.IsNullOrEmpty(AggregatePostFix)) sb.Append(AggregatePostFix);
     }
 }

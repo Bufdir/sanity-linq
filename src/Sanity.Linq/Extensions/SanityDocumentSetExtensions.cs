@@ -29,48 +29,49 @@ public static class SanityDocumentSetExtensions
     extension<T>(IQueryable<T> source)
     {
         /// <summary>
-        /// Generates a Sanity GROQ query string based on the LINQ expression associated with the source.
+        ///     Generates a Sanity GROQ query string based on the LINQ expression associated with the source.
         /// </summary>
         /// <typeparam name="T">
-        /// The type of the elements in the source queryable.
+        ///     The type of the elements in the source queryable.
         /// </typeparam>
         /// <returns>
-        /// A <see cref="string"/> containing the Sanity GROQ query.
+        ///     A <see cref="string" /> containing the Sanity GROQ query.
         /// </returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when the <paramref name="source"/> is <c>null</c>.
+        ///     Thrown when the <paramref name="source" /> is <c>null</c>.
         /// </exception>
         /// <exception cref="Exception">
-        /// Thrown when the <paramref name="source"/> is not a <see cref="SanityDocumentSet{T}"/>.
+        ///     Thrown when the <paramref name="source" /> is not a <see cref="SanityDocumentSet{T}" />.
         /// </exception>
         public string GetSanityQuery()
         {
             return source switch
             {
                 null => throw new ArgumentNullException(nameof(source)),
-                SanityDocumentSet<T> { Provider: SanityQueryProvider provider } => provider.GetSanityQuery<T>(
-                    source.Expression),
+                SanityDocumentSet<T> { Provider: SanityQueryProvider provider } => provider.GetSanityQuery<T>(source.Expression),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
 
         /// <summary>
-        /// Asynchronously converts the elements of the source queryable to a <see cref="List{T}"/>.
+        ///     Asynchronously converts the elements of the source queryable to a <see cref="List{T}" />.
         /// </summary>
         /// <typeparam name="T">
-        /// The type of the elements in the source queryable.
+        ///     The type of the elements in the source queryable.
         /// </typeparam>
         /// <param name="cancellationToken">
-        /// A <see cref="CancellationToken"/> to observe while waiting for the task to complete. Defaults to <see cref="CancellationToken.None"/>.
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete. Defaults to
+        ///     <see cref="CancellationToken.None" />.
         /// </param>
         /// <returns>
-        /// A task that represents the asynchronous operation. The task result contains a <see cref="List{T}"/> of elements from the source queryable.
+        ///     A task that represents the asynchronous operation. The task result contains a <see cref="List{T}" /> of elements
+        ///     from the source queryable.
         /// </returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when the source queryable is <c>null</c>.
+        ///     Thrown when the source queryable is <c>null</c>.
         /// </exception>
         /// <exception cref="Exception">
-        /// Thrown when the source queryable is not a <see cref="SanityDocumentSet{T}"/>.
+        ///     Thrown when the source queryable is not a <see cref="SanityDocumentSet{T}" />.
         /// </exception>
         public async Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
         {
@@ -83,23 +84,60 @@ public static class SanityDocumentSetExtensions
             };
         }
 
+
         /// <summary>
-        /// Asynchronously converts the elements of the source queryable to an array.
+        ///     Asynchronously converts the queryable source to a <see cref="List{T}" /> while invoking a specified callback during
+        ///     execution.
         /// </summary>
         /// <typeparam name="T">
-        /// The type of the elements in the source queryable.
+        ///     The type of elements in the source.
         /// </typeparam>
+        /// <param name="callback">
+        ///     A <see cref="ClientCallback" /> to be invoked with the query result during execution.
+        /// </param>
         /// <param name="cancellationToken">
-        /// A <see cref="CancellationToken"/> to observe while waiting for the task to complete. Defaults to <see cref="CancellationToken.None"/>.
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
         /// </param>
         /// <returns>
-        /// A task that represents the asynchronous operation. The task result contains an array of elements from the source queryable.
+        ///     A task that represents the asynchronous operation. The task result contains a <see cref="List{T}" /> of the query
+        ///     results.
         /// </returns>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when the source queryable is <c>null</c>.
+        ///     Thrown if the source is <c>null</c>.
         /// </exception>
         /// <exception cref="Exception">
-        /// Thrown when the source queryable is not a <see cref="SanityDocumentSet{T}"/>.
+        ///     Thrown if the source is not of type <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
+        public async Task<List<T>> ToListAsync(ClientCallback callback, CancellationToken cancellationToken = default)
+        {
+            return source switch
+            {
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteWithCallBackAsync(callback, cancellationToken).ConfigureAwait(false)).ToList(),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
+        }
+
+
+        /// <summary>
+        ///     Asynchronously converts the elements of the source queryable to an array.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="cancellationToken">
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete. Defaults to
+        ///     <see cref="CancellationToken.None" />.
+        /// </param>
+        /// <returns>
+        ///     A task that represents the asynchronous operation. The task result contains an array of elements from the source
+        ///     queryable.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown when the source queryable is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown when the source queryable is not a <see cref="SanityDocumentSet{T}" />.
         /// </exception>
         public async Task<T[]> ToArrayAsync(CancellationToken cancellationToken = default)
         {
@@ -112,18 +150,110 @@ public static class SanityDocumentSetExtensions
             };
         }
 
-        public async Task<T> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        ///     Converts the elements of the source queryable into an array asynchronously.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="cancellationToken">
+        ///     A token to monitor for cancellation requests.
+        /// </param>
+        /// <returns>
+        ///     A task representing the asynchronous operation, which, on completion, contains an array of elements of type
+        ///     <typeparamref name="T" />.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown when the <paramref name="source" /> is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown when the <paramref name="source" /> is not a <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
+        public async Task<T[]> ToArrayAsync(ClientCallback callback, CancellationToken cancellationToken = default)
         {
             return source switch
             {
                 null => throw new ArgumentNullException(nameof(source)),
-                SanityDocumentSet<T> dbSet => (await dbSet.Take(1)
-                    .ExecuteSingleAsync(cancellationToken)
-                    .ConfigureAwait(false)),
+                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteWithCallBackAsync(callback, cancellationToken).ConfigureAwait(false))
+                    .ToArray(),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
 
+        /// <summary>
+        ///     Asynchronously returns the first element of the queryable source or a default value if the source contains no
+        ///     elements.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the queryable source.
+        /// </typeparam>
+        /// <param name="source">
+        ///     The queryable source from which to retrieve the first element or default value.
+        /// </param>
+        /// <param name="cancellationToken">
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
+        /// </param>
+        /// <returns>
+        ///     A task that represents the asynchronous operation. The task result contains the first element of the sequence,
+        ///     or <c>null</c> if the source is empty.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown when the <paramref name="source" /> is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown when the <paramref name="source" /> is not a <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
+        public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+        {
+            return source switch
+            {
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => await dbSet.Take(1).ExecuteSingleAsync(cancellationToken).ConfigureAwait(false),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
+        }
+
+        /// <summary>
+        ///     Asynchronously returns the first element of a sequence that satisfies a specified condition or a default value if
+        ///     no such element is found.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="predicate">
+        ///     A function to test each element for a condition.
+        /// </param>
+        /// <param name="cancellationToken">
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
+        /// </param>
+        public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return await source.Where(predicate).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     Executes the query asynchronously and retrieves the result as an enumerable of elements.
+        /// </summary>
+        /// <typeparam name="T">
+        ///     The type of the elements in the source queryable.
+        /// </typeparam>
+        /// <param name="source">
+        ///     The queryable source from which to execute the query.
+        /// </param>
+        /// <param name="cancellationToken">
+        ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
+        /// </param>
+        /// <returns>
+        ///     A <see cref="Task{TResult}" /> that represents the asynchronous operation.
+        ///     The task result contains an <see cref="IEnumerable{T}" /> with the query results.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        ///     Thrown when the <paramref name="source" /> is <c>null</c>.
+        /// </exception>
+        /// <exception cref="Exception">
+        ///     Thrown when the <paramref name="source" /> is not a <see cref="SanityDocumentSet{T}" />.
+        /// </exception>
         public async Task<IEnumerable<T>> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             return source switch
@@ -134,7 +264,7 @@ public static class SanityDocumentSetExtensions
             };
         }
 
-        public async Task<T> ExecuteSingleAsync(CancellationToken cancellationToken = default)
+        public async Task<T?> ExecuteSingleAsync(CancellationToken cancellationToken = default)
         {
             return source switch
             {
@@ -149,7 +279,7 @@ public static class SanityDocumentSetExtensions
             return source switch
             {
                 null => throw new ArgumentNullException(nameof(source)),
-                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteCountAsync(cancellationToken).ConfigureAwait(false)),
+                SanityDocumentSet<T> dbSet => await dbSet.ExecuteCountAsync(cancellationToken).ConfigureAwait(false),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
@@ -159,8 +289,8 @@ public static class SanityDocumentSetExtensions
             return source switch
             {
                 null => throw new ArgumentNullException(nameof(source)),
-                SanityDocumentSet<T> dbSet => (await dbSet.ExecuteLongCountAsync(cancellationToken)
-                    .ConfigureAwait(false)),
+                SanityDocumentSet<T> dbSet => await dbSet.ExecuteLongCountAsync(cancellationToken)
+                    .ConfigureAwait(false),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }
@@ -225,8 +355,13 @@ public static class SanityDocumentSetExtensions
             return docs.Mutations.Create(document);
         }
 
+        public SanityMutationBuilder<TDoc> CreateIfNotExists(TDoc document)
+        {
+            return docs.Mutations.CreateIfNotExists(document);
+        }
+
         /// <summary>
-        /// Sets only non-null values.
+        ///     Sets only non-null values.
         /// </summary>
         /// <param name="document"></param>
         /// <returns></returns>

@@ -208,12 +208,7 @@ public static class SanityDocumentExtensions
             }
 
             var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p =>
-            {
-                if (p.Name.Equals("_createdAt", StringComparison.InvariantCultureIgnoreCase)) return true;
-                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
-                return attr is { PropertyName: "_createdAt" };
-            });
+            var revProperty = props.FirstOrDefault(p => p.GetJsonProperty() == "_createdAt" || p.Name.Equals("_createdAt", StringComparison.OrdinalIgnoreCase));
 
             CreatedAtPropertyCache[type] = revProperty;
             return CreatedAtPropertyCache[type];
@@ -227,12 +222,7 @@ public static class SanityDocumentExtensions
             }
 
             var props = type.GetProperties();
-            var idProperty = props.FirstOrDefault(p =>
-            {
-                if (p.Name.Equals("_id", StringComparison.InvariantCultureIgnoreCase)) return true;
-                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
-                return attr is { PropertyName: "_id" };
-            });
+            var idProperty = props.FirstOrDefault(p => p.GetJsonProperty() == "_id" || p.Name.Equals("_id", StringComparison.OrdinalIgnoreCase));
             IdPropertyCache[type] = idProperty;
             return IdPropertyCache[type];
         }
@@ -245,12 +235,7 @@ public static class SanityDocumentExtensions
             }
 
             var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p =>
-            {
-                if (p.Name.Equals("_rev", StringComparison.InvariantCultureIgnoreCase)) return true;
-                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
-                return attr is { PropertyName: "_rev" };
-            });
+            var revProperty = props.FirstOrDefault(p => p.GetJsonProperty() == "_rev" || p.Name.Equals("_rev", StringComparison.OrdinalIgnoreCase));
 
             RevPropertyCache[type] = revProperty;
             return RevPropertyCache[type];
@@ -264,12 +249,7 @@ public static class SanityDocumentExtensions
             }
 
             var props = type.GetProperties();
-            var typeProperty = props.FirstOrDefault(p =>
-            {
-                if (p.Name.Equals("_type", StringComparison.InvariantCultureIgnoreCase)) return true;
-                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
-                return attr is { PropertyName: "_type" };
-            });
+            var typeProperty = props.FirstOrDefault(p => p.GetJsonProperty() == "_type" || p.Name.Equals("_type", StringComparison.OrdinalIgnoreCase));
 
             TypePropertyCache[type] = typeProperty;
             return TypePropertyCache[type];
@@ -283,12 +263,7 @@ public static class SanityDocumentExtensions
             }
 
             var props = type.GetProperties();
-            var revProperty = props.FirstOrDefault(p =>
-            {
-                if (p.Name.Equals("_updatedAt", StringComparison.InvariantCultureIgnoreCase)) return true;
-                var attr = p.GetCustomAttribute<JsonPropertyAttribute>(true);
-                return attr is { PropertyName: "_updatedAt" };
-            });
+            var revProperty = props.FirstOrDefault(p => p.GetJsonProperty() == "_updatedAt" || p.Name.Equals("_updatedAt", StringComparison.OrdinalIgnoreCase));
 
             UpdatedAtPropertyCache[type] = revProperty;
             return UpdatedAtPropertyCache[type];

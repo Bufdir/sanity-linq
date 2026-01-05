@@ -1,32 +1,32 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-  <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
 
-	  <IsPackable>false</IsPackable>
+        <IsPackable>false</IsPackable>
 
-    <RootNamespace>Sanity.Linq.Tests</RootNamespace>
+        <RootNamespace>Sanity.Linq.Tests</RootNamespace>
 
-    <AssemblyName>Sanity.Linq.Tests</AssemblyName>
-  </PropertyGroup>
+        <AssemblyName>Sanity.Linq.Tests</AssemblyName>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <!-- Use Coverlet MSBuild integration so repo-level MSBuild props (CollectCoverage, CoverletOutput*, Threshold*) take effect in CI -->
-    <PackageReference Include="coverlet.msbuild" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <!-- Use Coverlet MSBuild integration so repo-level MSBuild props (CollectCoverage, CoverletOutput*, Threshold*) take effect in CI -->
+        <PackageReference Include="coverlet.msbuild"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\demo\Sanity.Linq.Demo\Sanity.Linq.Demo.csproj" />
-    <ProjectReference Include="..\..\src\Sanity.Linq\Sanity.Linq.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\demo\Sanity.Linq.Demo\Sanity.Linq.Demo.csproj"/>
+        <ProjectReference Include="..\..\src\Sanity.Linq\Sanity.Linq.csproj"/>
+    </ItemGroup>
 
 </Project>

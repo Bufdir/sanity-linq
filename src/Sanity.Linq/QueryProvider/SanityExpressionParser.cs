@@ -54,6 +54,8 @@ internal class SanityExpressionParser(Expression expression, Type docType, int m
             // Traverse expression to build query
             Visit(expression);
 
+        if (!string.IsNullOrEmpty(_queryBuilder.AggregateFunction)) includeProjections = false;
+
         // Build query
         var query = _queryBuilder.Build(includeProjections, MaxNestingLevel);
         return query;

@@ -96,6 +96,13 @@ public class SanityDocumentSet<TDoc> : SanityDocumentSet, IOrderedQueryable<TDoc
         return await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<int>(exp, null, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<int> ExecuteCountWithCallbackAsync(ClientCallback callback, CancellationToken cancellationToken = default)
+    {
+        var countMethod = TypeSystem.GetMethod(nameof(Queryable.Count)).MakeGenericMethod(typeof(TDoc));
+        var exp = Expression.Call(null, countMethod, Expression);
+        return await ((SanityQueryProvider)Provider).ExecuteWithCallbackAsync<int>(exp, callback, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<long> ExecuteLongCountAsync(CancellationToken cancellationToken = default)
     {
         var countMethod = TypeSystem.GetMethod(nameof(Queryable.LongCount)).MakeGenericMethod(typeof(TDoc));

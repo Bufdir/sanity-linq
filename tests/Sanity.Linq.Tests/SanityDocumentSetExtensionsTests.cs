@@ -212,6 +212,30 @@ public class SanityDocumentSetExtensionsTests
     }
 
     [Fact]
+    public async Task CountAsync_With_Callback_Returns_Count()
+    {
+        // Arrange
+        var testClient = new TestSanityClient
+        {
+            FetchResult = 7
+        };
+
+        var context = CreateContext(testClient);
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+
+        var callbackCalled = false;
+        ClientCallback callback = r => { callbackCalled = true; };
+
+        // Act
+        var result = await set.CountAsync(callback);
+
+        // Assert
+        Assert.Equal(7, result);
+        Assert.True(testClient.FetchAsyncCalled);
+        Assert.True(callbackCalled);
+    }
+
+    [Fact]
     public async Task LongCountAsync_Returns_LongCount()
     {
         // Arrange
@@ -905,6 +929,7 @@ public class SanityDocumentSetExtensionsTests
         {
             FetchAsyncCalled = true;
             LastQuery = query;
+            callback?.Invoke(new ClientResult(query, string.Empty));
             return Task.FromResult(new SanityQueryResponse<TResult> { Result = (TResult)FetchResult! });
         }
 

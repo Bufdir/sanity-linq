@@ -156,6 +156,7 @@ public static class SanityDocumentSetExtensions
         /// <typeparam name="T">
         ///     The type of the elements in the source queryable.
         /// </typeparam>
+        /// <param name="callback"></param>
         /// <param name="cancellationToken">
         ///     A token to monitor for cancellation requests.
         /// </param>
@@ -270,6 +271,16 @@ public static class SanityDocumentSetExtensions
             {
                 null => throw new ArgumentNullException(nameof(source)),
                 SanityDocumentSet<T> dbSet => await dbSet.ExecuteSingleAsync(cancellationToken).ConfigureAwait(false),
+                _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
+            };
+        }
+
+        public async Task<int> CountAsync(ClientCallback callback, CancellationToken cancellationToken = default)
+        {
+            return source switch
+            {
+                null => throw new ArgumentNullException(nameof(source)),
+                SanityDocumentSet<T> dbSet => await dbSet.ExecuteCountWithCallbackAsync(callback, cancellationToken).ConfigureAwait(false),
                 _ => throw new Exception("Queryable source must be a SanityDbSet<T>.")
             };
         }

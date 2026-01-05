@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using Sanity.Linq.CommonTypes;
 using Sanity.Linq.QueryProvider;
@@ -168,6 +169,32 @@ public class SanityExpressionParserTests
         // Expected: (defined(title) && title != null)
         Assert.Contains("defined(title)", groq);
         Assert.Contains("title != null", groq);
+    }
+
+    [Fact]
+    public void GetSanityQuery_With_Aggregate_Disables_Projections()
+    {
+        // Arrange
+        var context = CreateContext();
+        var set = new SanityDocumentSet<MyDoc>(context, 3);
+
+        // Count() is an aggregate. 
+        // We need to use the provider to get the query for a Count expression.
+        var countMethod = typeof(Queryable).GetMethods().First(m => m.Name == "Count" && m.GetParameters().Length == 1).MakeGenericMethod(typeof(MyDoc));
+        var countExpression = Expression.Call(null, countMethod, set.Expression);
+
+        var provider = (SanityQueryProvider)set.Provider;
+
+        // Act
+        var groq = provider.GetSanityQuery<int>(countExpression);
+
+        // Assert
+        // For aggregate functions, it should be count(*[_type == "myDoc"])
+        // and NOT have any projections like { ... } at the end.
+        Assert.StartsWith("count(", groq);
+        Assert.EndsWith(")", groq);
+        Assert.DoesNotContain("{", groq);
+        Assert.DoesNotContain("}", groq);
     }
 
     private sealed class MyDoc : SanityDocument

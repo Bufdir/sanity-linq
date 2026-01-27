@@ -58,7 +58,7 @@ public class SanityClientTests
         Assert.Single(result.Result);
         Assert.NotNull(capturedRequest);
         Assert.Equal(HttpMethod.Post, capturedRequest.Method);
-        Assert.Equal("https://testproj.api.sanity.io/v1/data/query/testdata", capturedRequest.RequestUri?.ToString());
+        Assert.Equal("https://testproj.api.sanity.io/v1/data/query/testdata?perspective=raw", capturedRequest.RequestUri?.ToString());
 
         var content = await capturedRequest.Content!.ReadAsStringAsync();
         Assert.Contains(query, content);

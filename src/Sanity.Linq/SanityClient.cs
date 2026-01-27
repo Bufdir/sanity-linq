@@ -90,7 +90,9 @@ public class SanityClient
         };
 
         var json = new StringContent(JsonConvert.SerializeObject(oQuery, Formatting.None, SerializerSettings), Encoding.UTF8, "application/json");
-        var response = await _httpQueryClient.PostAsync($"data/query/{WebUtility.UrlEncode(_options.Dataset)}", json, cancellationToken).ConfigureAwait(false);
+        var perspective = GetPerspectiveString(_options.Perspective);
+        var url = $"data/query/{WebUtility.UrlEncode(_options.Dataset)}?perspective={perspective}";
+        var response = await _httpQueryClient.PostAsync(url, json, cancellationToken).ConfigureAwait(false);
 
         return await HandleHttpResponseAsync<SanityQueryResponse<TResult>>(response, callback).ConfigureAwait(false);
     }
@@ -210,6 +212,17 @@ public class SanityClient
     {
         if (value == null) return string.Empty;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static string GetPerspectiveString(SanityPerspective perspective)
+    {
+        return perspective switch
+        {
+            SanityPerspective.Raw => "raw",
+            SanityPerspective.Published => "published",
+            SanityPerspective.PreviewDrafts => "previewDrafts",
+            _ => "raw"
+        };
     }
 
     private void Initialize()

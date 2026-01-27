@@ -13,6 +13,7 @@
 //  You should have received a copy of the MIT License
 //  along with this program.
 
+using Sanity.Linq.Enums;
 
 namespace Sanity.Linq;
 
@@ -25,8 +26,16 @@ public class SanityOptions
     public string? Token { get; set; }
 
     public bool UseCdn { get; set; }
-    
+
     public bool Debug { get; set; }
+
+    /// <summary>
+    /// The perspective to use when querying documents. Defaults to Raw.
+    /// - Raw: Returns all documents as-is (drafts and published as separate documents)
+    /// - Published: Returns only published documents
+    /// - PreviewDrafts: Returns drafts when available, falls back to published
+    /// </summary>
+    public SanityPerspective Perspective { get; set; } = SanityPerspective.Raw;
 
     private string _apiVersion = "v1";
         
